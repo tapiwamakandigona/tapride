@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useRide } from '../hooks/useRide';
 import { useLocation as useGeoLocation } from '../hooks/useLocation';
+import { getRoute, type RouteResult } from '../lib/geo';
 import MapView from '../components/Map/MapView';
 import { formatFare } from '../lib/fare';
-import type { Ride } from '../types';
 
 export default function ActiveRide() {
   const navigate = useNavigate();
-  const routeLocation = useLocation();
   const { profile } = useAuth();
   const {
     currentRide,
@@ -23,6 +22,7 @@ export default function ActiveRide() {
   const { position, startWatching } = useGeoLocation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [route, setRoute] = useState<RouteResult | null>(null);
 
   const isDriver = profile?.user_type === 'driver';
 
@@ -38,6 +38,21 @@ export default function ActiveRide() {
       }
     }
   }, [currentRide, initializing, isDriver, navigate]);
+
+  // Fetch route for display
+  useEffect(() => {
+    if (!currentRide) return;
+    let cancelled = false;
+    getRoute(
+      currentRide.pickup_lat,
+      currentRide.pickup_lng,
+      currentRide.destination_lat,
+      currentRide.destination_lng
+    ).then((r) => {
+      if (!cancelled) setRoute(r);
+    });
+    return () => { cancelled = true; };
+  }, [currentRide?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Driver: track own location
   useEffect(() => {
@@ -123,7 +138,16 @@ export default function ActiveRide() {
       {/* Status Bar */}
       <div className="px-4 pt-4 pb-2 bg-white dark:bg-gray-900 z-10">
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate(isDriver ? '/driver' : '/rider')}
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              aria-label="Go back"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-gray-700 dark:text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
+            </button>
             <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${statusColor[currentRide.status] || ''}`}>
               {statusLabel[currentRide.status] || currentRide.status}
             </span>
@@ -148,6 +172,7 @@ export default function ActiveRide() {
           pickupPosition={{ lat: currentRide.pickup_lat, lng: currentRide.pickup_lng }}
           destinationPosition={{ lat: currentRide.destination_lat, lng: currentRide.destination_lng }}
           driverPosition={driverPos}
+          routeCoords={route?.coordinates}
           className="h-full w-full"
         />
       </div>
@@ -178,11 +203,12 @@ export default function ActiveRide() {
           </div>
           <div className="text-right ml-4">
             <p className="text-lg font-bold text-gray-900 dark:text-white">
-              {formatFare(currentRide.fare_estimate || 0)}
+              {formatFare(Number(currentRide.fare_estimate) || 0)}
             </p>
-            {currentRide.distance_km > 0 && (
+            {Number(currentRide.distance_km) > 0 && (
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                {currentRide.distance_km.toFixed(1)} km
+                {Number(currentRide.distance_km).toFixed(1)} km
+                {route?.durationMin ? ` ~ ${Math.ceil(route.durationMin)} min` : ''}
               </p>
             )}
           </div>

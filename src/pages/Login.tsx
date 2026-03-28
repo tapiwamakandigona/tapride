@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { signIn, profile } = useAuth();
+  const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -17,13 +17,13 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const { error: signInError } = await signIn(email, password);
-      if (signInError) {
-        setError(signInError);
+      const result = await signIn(email, password);
+      if (result.error) {
+        setError(result.error);
         return;
       }
-      // Navigate directly to role-based route to avoid double redirect through /
-      const path = profile?.user_type === 'driver' ? '/driver' : '/rider';
+      // Use the userType returned from signIn (profile is fetched inside signIn)
+      const path = result.userType === 'driver' ? '/driver' : '/rider';
       navigate(path, { replace: true });
     } catch {
       setError('An unexpected error occurred');

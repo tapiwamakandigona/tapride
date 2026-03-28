@@ -1,10 +1,13 @@
 import type { LocationCoords } from '../../types';
-import { haversineDistance, formatAddress } from '../../lib/geo';
 import { calculateFare, formatFare } from '../../lib/fare';
 
 interface RideRequestFormProps {
   pickup: LocationCoords | null;
   destination: LocationCoords | null;
+  pickupAddress?: string;
+  destAddress?: string;
+  distanceKm?: number;
+  durationMin?: number;
   onSelectPickup: () => void;
   onSelectDestination: () => void;
   onRequestRide: () => void;
@@ -14,15 +17,18 @@ interface RideRequestFormProps {
 export default function RideRequestForm({
   pickup,
   destination,
+  pickupAddress,
+  destAddress,
+  distanceKm,
+  durationMin,
   onSelectPickup,
   onSelectDestination,
   onRequestRide,
   loading,
 }: RideRequestFormProps) {
-  const distance = pickup && destination
-    ? haversineDistance(pickup.lat, pickup.lng, destination.lat, destination.lng)
-    : 0;
+  const distance = distanceKm ?? 0;
   const fare = distance > 0 ? calculateFare(distance) : 0;
+  const eta = durationMin ? Math.ceil(durationMin) : null;
 
   return (
     <div className="space-y-3">
@@ -38,7 +44,9 @@ export default function RideRequestForm({
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-gray-500 dark:text-gray-400">PICKUP</p>
           <p className="text-sm text-gray-900 dark:text-white truncate">
-            {pickup ? formatAddress(pickup.lat, pickup.lng) : 'Tap to set pickup on map'}
+            {pickup
+              ? (pickupAddress || `${pickup.lat.toFixed(4)}, ${pickup.lng.toFixed(4)}`)
+              : 'Set pickup location'}
           </p>
         </div>
         {pickup && (
@@ -58,7 +66,9 @@ export default function RideRequestForm({
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-gray-500 dark:text-gray-400">DESTINATION</p>
           <p className="text-sm text-gray-900 dark:text-white truncate">
-            {destination ? formatAddress(destination.lat, destination.lng) : 'Tap to set destination on map'}
+            {destination
+              ? (destAddress || `${destination.lat.toFixed(4)}, ${destination.lng.toFixed(4)}`)
+              : 'Where are you going?'}
           </p>
         </div>
         {destination && (
@@ -73,6 +83,12 @@ export default function RideRequestForm({
             <span className="text-gray-600 dark:text-gray-400">Distance</span>
             <span className="font-medium text-gray-900 dark:text-white">{distance.toFixed(1)} km</span>
           </div>
+          {eta && (
+            <div className="flex justify-between text-sm mt-1">
+              <span className="text-gray-600 dark:text-gray-400">ETA</span>
+              <span className="font-medium text-gray-900 dark:text-white">{eta} min</span>
+            </div>
+          )}
           <div className="flex justify-between text-sm mt-1">
             <span className="text-gray-600 dark:text-gray-400">Estimated fare</span>
             <span className="font-bold text-primary-600 dark:text-primary-400 text-lg">

@@ -12,17 +12,12 @@ export default function DriverDashboard() {
   const navigate = useNavigate();
   const { profile, updateProfile } = useAuth();
   const { currentRide, initializing, acceptRide, updateDriverLocation, fetchNearbyRequests } = useRide();
-  const { position, getCurrentLocation, startWatching } = useGeoLocation();
+  const { position, startWatching } = useGeoLocation();
   const [isOnline, setIsOnline] = useState(profile?.is_online ?? false);
   const [nearbyRequests, setNearbyRequests] = useState<Ride[]>([]);
   const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
   const [toggleLoading, setToggleLoading] = useState(false);
   const [error, setError] = useState('');
-
-  // Get current location on mount
-  useEffect(() => {
-    getCurrentLocation();
-  }, [getCurrentLocation]);
 
   // Start watching location when online
   useEffect(() => {
@@ -79,13 +74,6 @@ export default function DriverDashboard() {
     };
   }, [isOnline, fetchNearbyRequests]);
 
-  // Navigate to active ride when ride is accepted/in_progress
-  useEffect(() => {
-    if (currentRide && (currentRide.status === 'accepted' || currentRide.status === 'in_progress')) {
-      navigate('/ride/active', { replace: true });
-    }
-  }, [currentRide, navigate]);
-
   const handleToggleOnline = useCallback(async () => {
     if (!profile?.id) return;
     setToggleLoading(true);
@@ -113,9 +101,14 @@ export default function DriverDashboard() {
     setError('');
     try {
       await acceptRide(rideId);
+      // After accepting, navigate to active ride
+      navigate('/ride/active');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to accept ride';
       setError(message);
+      // Refresh the list since the ride may have been taken
+      const requests = await fetchNearbyRequests();
+      setNearbyRequests(requests);
     } finally {
       setAcceptingRideId(null);
     }
@@ -130,8 +123,26 @@ export default function DriverDashboard() {
     );
   }
 
+  // Active ride banner (instead of auto-redirect)
+  const hasActiveRide = currentRide && (currentRide.status === 'accepted' || currentRide.status === 'in_progress');
+
   return (
     <div className="flex flex-col h-full">
+      {/* Active ride banner */}
+      {hasActiveRide && (
+        <button
+          onClick={() => navigate('/ride/active')}
+          className="w-full px-4 py-3 bg-green-600 text-white text-sm font-semibold flex items-center justify-between z-10"
+        >
+          <span>
+            {currentRide.status === 'accepted' ? 'Head to pickup - tap to view' : 'Ride in progress - tap to view'}
+          </span>
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+      )}
+
       {/* Header */}
       <div className="px-4 pt-4 pb-2 bg-white dark:bg-gray-900 z-10 flex items-center justify-between">
         <div>

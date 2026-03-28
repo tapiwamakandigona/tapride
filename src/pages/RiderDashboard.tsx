@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useRide } from '../hooks/useRide';
 import { useLocation as useGeoLocation } from '../hooks/useLocation';
-import { reverseGeocode } from '../lib/geo';
+import { reverseGeocode, getRoute, type RouteResult } from '../lib/geo';
 import { haversineDistance } from '../lib/geo';
 import MapView from '../components/Map/MapView';
+import AddressSearch from '../components/Map/AddressSearch';
 import RideRequestForm from '../components/Ride/RideRequestForm';
 import type { LocationCoords } from '../types';
 
@@ -15,19 +16,15 @@ export default function RiderDashboard() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { currentRide, initializing, requestRide, cancelRide } = useRide();
-  const { position, error: locationError, getCurrentLocation } = useGeoLocation();
+  const { position, error: locationError } = useGeoLocation();
   const [pickup, setPickup] = useState<LocationCoords | null>(null);
   const [destination, setDestination] = useState<LocationCoords | null>(null);
   const [pickupAddress, setPickupAddress] = useState('');
   const [destAddress, setDestAddress] = useState('');
+  const [route, setRoute] = useState<RouteResult | null>(null);
   const [selectingFor, setSelectingFor] = useState<'pickup' | 'destination' | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  // Get current location on mount
-  useEffect(() => {
-    getCurrentLocation();
-  }, [getCurrentLocation]);
 
   // Set pickup to current location
   useEffect(() => {
@@ -37,12 +34,18 @@ export default function RiderDashboard() {
     }
   }, [position, pickup]);
 
-  // Navigate to active ride screen when ride is accepted
+  // Fetch route when both pickup and destination are set
   useEffect(() => {
-    if (currentRide && (currentRide.status === 'accepted' || currentRide.status === 'in_progress')) {
-      navigate('/ride/active', { replace: true });
+    if (!pickup || !destination) {
+      setRoute(null);
+      return;
     }
-  }, [currentRide, navigate]);
+    let cancelled = false;
+    getRoute(pickup.lat, pickup.lng, destination.lat, destination.lng).then((r) => {
+      if (!cancelled) setRoute(r);
+    });
+    return () => { cancelled = true; };
+  }, [pickup, destination]);
 
   const handleMapClick = useCallback(async (lat: number, lng: number) => {
     if (selectingFor === 'pickup') {
@@ -58,6 +61,16 @@ export default function RiderDashboard() {
     }
   }, [selectingFor]);
 
+  const handlePickupSearch = useCallback((lat: number, lng: number, name: string) => {
+    setPickup({ lat, lng });
+    setPickupAddress(name);
+  }, []);
+
+  const handleDestSearch = useCallback((lat: number, lng: number, name: string) => {
+    setDestination({ lat, lng });
+    setDestAddress(name);
+  }, []);
+
   const handleRequestRide = async () => {
     if (!pickup || !destination) {
       setError('Please set both pickup and destination');
@@ -65,7 +78,7 @@ export default function RiderDashboard() {
     }
 
     // Validate minimum distance
-    const dist = haversineDistance(pickup.lat, pickup.lng, destination.lat, destination.lng);
+    const dist = route?.distanceKm ?? haversineDistance(pickup.lat, pickup.lng, destination.lat, destination.lng);
     if (dist < MIN_RIDE_DISTANCE_KM) {
       setError('Pickup and destination are too close. Please choose locations at least 100m apart.');
       return;
@@ -77,7 +90,8 @@ export default function RiderDashboard() {
     try {
       await requestRide(
         pickup.lat, pickup.lng, pickupAddress || 'Pickup location',
-        destination.lat, destination.lng, destAddress || 'Destination'
+        destination.lat, destination.lng, destAddress || 'Destination',
+        route?.distanceKm
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to request ride';
@@ -95,6 +109,7 @@ export default function RiderDashboard() {
       setDestination(null);
       setPickupAddress('');
       setDestAddress('');
+      setRoute(null);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to cancel ride';
       setError(message);
@@ -110,8 +125,24 @@ export default function RiderDashboard() {
     );
   }
 
+  // Active ride banner (instead of auto-redirect)
+  const hasActiveRide = currentRide && (currentRide.status === 'accepted' || currentRide.status === 'in_progress');
+
   return (
     <div className="flex flex-col h-full">
+      {/* Active ride banner */}
+      {hasActiveRide && (
+        <button
+          onClick={() => navigate('/ride/active')}
+          className="w-full px-4 py-3 bg-primary-600 text-white text-sm font-semibold flex items-center justify-between z-10"
+        >
+          <span>You have an active ride - tap to view</span>
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+      )}
+
       {/* Greeting */}
       <div className="px-4 pt-4 pb-2 bg-white dark:bg-gray-900 z-10">
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">
@@ -122,6 +153,24 @@ export default function RiderDashboard() {
         </p>
       </div>
 
+      {/* Address search inputs */}
+      {!currentRide && (
+        <div className="px-4 py-2 bg-white dark:bg-gray-900 space-y-2 z-10">
+          <AddressSearch
+            placeholder="Pickup location"
+            icon="pickup"
+            value={pickupAddress}
+            onSelect={handlePickupSearch}
+          />
+          <AddressSearch
+            placeholder="Where are you going?"
+            icon="destination"
+            value={destAddress}
+            onSelect={handleDestSearch}
+          />
+        </div>
+      )}
+
       {/* Map */}
       <div className="flex-1 relative">
         <MapView
@@ -129,14 +178,23 @@ export default function RiderDashboard() {
           userPosition={position ? { lat: position.lat, lng: position.lng } : undefined}
           pickupPosition={pickup || undefined}
           destinationPosition={destination || undefined}
+          routeCoords={route?.coordinates}
           onMapClick={selectingFor ? handleMapClick : undefined}
           className="h-full w-full"
         />
 
         {/* Selecting indicator */}
         {selectingFor && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-primary-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium z-[1000]">
-            Tap map to set {selectingFor}
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium z-[1000]">
+            <span>Tap map to set {selectingFor}</span>
+            <button
+              onClick={() => setSelectingFor(null)}
+              className="ml-1 w-5 h-5 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
           </div>
         )}
 
@@ -167,7 +225,7 @@ export default function RiderDashboard() {
                   Looking for a driver...
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Estimated fare: ${currentRide.fare_estimate?.toFixed(2)}
+                  Estimated fare: ${Number(currentRide.fare_estimate || 0).toFixed(2)}
                 </p>
               </div>
             </div>
@@ -178,17 +236,26 @@ export default function RiderDashboard() {
               Cancel Request
             </button>
           </div>
-        ) : (
+        ) : !hasActiveRide ? (
           /* Ride request form */
-          <RideRequestForm
-            pickup={pickup}
-            destination={destination}
-            onSelectPickup={() => setSelectingFor('pickup')}
-            onSelectDestination={() => setSelectingFor('destination')}
-            onRequestRide={handleRequestRide}
-            loading={loading}
-          />
-        )}
+          <>
+            <RideRequestForm
+              pickup={pickup}
+              destination={destination}
+              pickupAddress={pickupAddress}
+              destAddress={destAddress}
+              distanceKm={route?.distanceKm}
+              durationMin={route?.durationMin}
+              onSelectPickup={() => setSelectingFor('pickup')}
+              onSelectDestination={() => setSelectingFor('destination')}
+              onRequestRide={handleRequestRide}
+              loading={loading}
+            />
+            <p className="text-center text-xs text-gray-400 dark:text-gray-600">
+              Or tap the map to set locations
+            </p>
+          </>
+        ) : null}
       </div>
     </div>
   );

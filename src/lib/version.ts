@@ -1,14 +1,16 @@
 import { supabase } from './supabase';
 
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.0.1';
 
 export async function checkForUpdate(): Promise<{ required: boolean; latestVersion: string }> {
   try {
+    // Try both possible keys for backwards compatibility
     const { data } = await supabase
       .from('app_config')
       .select('value')
-      .eq('key', 'min_app_version')
-      .single();
+      .in('key', ['min_version', 'min_app_version'])
+      .limit(1)
+      .maybeSingle();
 
     if (!data) return { required: false, latestVersion: APP_VERSION };
 

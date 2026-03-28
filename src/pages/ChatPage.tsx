@@ -7,7 +7,7 @@ import ChatBubble from '../components/Chat/ChatBubble';
 
 export default function ChatPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { currentRide, initializing } = useRide();
   const { messages, sendMessage, loading: chatLoading } = useChat(currentRide?.id ?? null);
   const [input, setInput] = useState('');
@@ -48,6 +48,14 @@ export default function ChatPage() {
     }
   };
 
+  // Determine the other person's name
+  const isDriver = profile?.user_type === 'driver';
+  const otherName = currentRide
+    ? isDriver
+      ? (currentRide.rider?.full_name || 'Rider')
+      : (currentRide.driver?.full_name || 'Driver')
+    : 'Chat';
+
   // Show loading while initializing
   if (initializing) {
     return (
@@ -72,7 +80,7 @@ export default function ChatPage() {
         </button>
         <div>
           <h2 className="font-semibold text-gray-900 dark:text-white">
-            Ride Chat
+            {otherName}
           </h2>
           <p className="text-xs text-gray-500 dark:text-gray-400">
             {messages.length} message{messages.length !== 1 ? 's' : ''}

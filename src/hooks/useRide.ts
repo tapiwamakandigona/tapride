@@ -18,21 +18,29 @@ export function useRide() {
       setInitializing(false);
       return;
     }
-    const activeStatuses: RideStatus[] = ['requested', 'accepted', 'in_progress'];
-    const column = profile?.user_type === 'driver' ? 'driver_id' : 'rider_id';
+    try {
+      const activeStatuses: RideStatus[] = ['requested', 'accepted', 'in_progress'];
 
-    const { data } = await supabase
-      .from('rides')
-      .select('*')
-      .eq(column, user.id)
-      .in('status', activeStatuses)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      // For drivers, check driver_id. For riders, check rider_id.
+      // Also check rider_id for drivers who might not have a driver_id yet on 'requested' rides
+      const column = profile?.user_type === 'driver' ? 'driver_id' : 'rider_id';
 
-    setCurrentRide(data);
-    setInitializing(false);
-  }, [user, profile]);
+      const { data } = await supabase
+        .from('rides')
+        .select('*')
+        .eq(column, user.id)
+        .in('status', activeStatuses)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      setCurrentRide(data);
+    } catch (err) {
+      console.warn('[TapRide] fetchActiveRide error:', err);
+    } finally {
+      setInitializing(false);
+    }
+  }, [user, profile?.user_type]);
 
   // Request a ride (rider)
   const requestRide = async (
@@ -41,35 +49,40 @@ export function useRide() {
     pickupAddress: string,
     destLat: number,
     destLng: number,
-    destAddress: string
+    destAddress: string,
+    routeDistanceKm?: number
   ) => {
     if (!user) throw new Error('Not authenticated');
     setLoading(true);
 
-    const distanceKm = haversineDistance(pickupLat, pickupLng, destLat, destLng);
+    // Use OSRM route distance if available, otherwise haversine
+    const distanceKm = routeDistanceKm ?? haversineDistance(pickupLat, pickupLng, destLat, destLng);
     const fareEstimate = calculateFare(distanceKm);
 
-    const { data, error } = await supabase
-      .from('rides')
-      .insert({
-        rider_id: user.id,
-        pickup_lat: pickupLat,
-        pickup_lng: pickupLng,
-        pickup_address: pickupAddress,
-        destination_lat: destLat,
-        destination_lng: destLng,
-        destination_address: destAddress,
-        status: 'requested' as RideStatus,
-        fare_estimate: fareEstimate,
-        distance_km: Math.round(distanceKm * 10) / 10,
-      })
-      .select('*')
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('rides')
+        .insert({
+          rider_id: user.id,
+          pickup_lat: pickupLat,
+          pickup_lng: pickupLng,
+          pickup_address: pickupAddress,
+          destination_lat: destLat,
+          destination_lng: destLng,
+          destination_address: destAddress,
+          status: 'requested' as RideStatus,
+          fare_estimate: fareEstimate,
+          distance_km: Math.round(distanceKm * 10) / 10,
+        })
+        .select('*')
+        .single();
 
-    setLoading(false);
-    if (error) throw new Error(error.message);
-    if (data) setCurrentRide(data);
-    return data;
+      if (error) throw new Error(error.message);
+      if (data) setCurrentRide(data);
+      return data;
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Accept a ride (driver)
@@ -77,21 +90,29 @@ export function useRide() {
     if (!user) throw new Error('Not authenticated');
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from('rides')
-      .update({
-        driver_id: user.id,
-        status: 'accepted' as RideStatus,
-        accepted_at: new Date().toISOString(),
-      })
-      .eq('id', rideId)
-      .eq('status', 'requested')
-      .select('*')
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('rides')
+        .update({
+          driver_id: user.id,
+          status: 'accepted' as RideStatus,
+          accepted_at: new Date().toISOString(),
+        })
+        .eq('id', rideId)
+        .eq('status', 'requested')
+        .select('*')
+        .single();
 
-    setLoading(false);
-    if (error) throw new Error(error.message);
-    if (data) setCurrentRide(data);
+      if (error) {
+        if (error.code === 'PGRST116') {
+          throw new Error('This ride was already accepted by another driver');
+        }
+        throw new Error(error.message);
+      }
+      if (data) setCurrentRide(data);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Start ride (driver picked up rider)
@@ -192,15 +213,27 @@ export function useRide() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Fetch nearby ride requests (driver)
+  // Fetch nearby ride requests (driver) — joins rider profile
   const fetchNearbyRequests = useCallback(async (): Promise<Ride[]> => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('rides')
-      .select('*')
+      .select('*, rider:profiles!rides_rider_id_fkey(*)')
       .eq('status', 'requested')
       .is('driver_id', null)
       .order('created_at', { ascending: false })
       .limit(20);
+
+    if (error) {
+      // Fallback without join if FK reference doesn't work
+      const { data: fallbackData } = await supabase
+        .from('rides')
+        .select('*')
+        .eq('status', 'requested')
+        .is('driver_id', null)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      return (fallbackData as Ride[]) || [];
+    }
 
     return (data as Ride[]) || [];
   }, []);

@@ -13,6 +13,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
 
   const isDriver = profile?.user_type === 'driver';
 
@@ -73,6 +74,15 @@ export default function Profile() {
     setError('');
   };
 
+  const handleSignOut = () => {
+    setShowSignOutConfirm(true);
+  };
+
+  const confirmSignOut = async () => {
+    setShowSignOutConfirm(false);
+    await signOut();
+  };
+
   return (
     <div className="min-h-full bg-gray-50 dark:bg-gray-900 pb-24">
       {/* Header */}
@@ -102,13 +112,13 @@ export default function Profile() {
                 {isDriver ? 'Driver' : 'Rider'}
               </span>
             </div>
-            {profile?.rating != null && profile.rating > 0 && (
+            {profile?.rating != null && Number(profile.rating) > 0 && (
               <div className="flex items-center gap-1 flex-shrink-0">
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                   <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                 </svg>
                 <span className="font-semibold text-gray-900 dark:text-white">
-                  {profile.rating.toFixed(1)}
+                  {Number(profile.rating).toFixed(1)}
                 </span>
               </div>
             )}
@@ -284,7 +294,7 @@ export default function Profile() {
             )}
 
             <button
-              onClick={signOut}
+              onClick={handleSignOut}
               className="w-full py-3 rounded-xl border-2 border-red-500 text-red-500 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
             >
               Sign Out
@@ -292,6 +302,34 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {/* Sign out confirmation modal */}
+      {showSignOutConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+              Sign Out
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              Are you sure you want to sign out?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowSignOutConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmSignOut}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <div className="text-center py-6">

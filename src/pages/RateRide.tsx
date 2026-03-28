@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -11,8 +11,10 @@ export default function RateRide() {
   const { user, profile } = useAuth();
 
   // Read the completed ride from router state (passed by ActiveRide)
-  const ride: Ride | null = (location.state as { ride?: Ride } | null)?.ride ?? null;
+  const stateRide: Ride | null = (location.state as { ride?: Ride } | null)?.ride ?? null;
 
+  const [ride, setRide] = useState<Ride | null>(stateRide);
+  const [rideLoading, setRideLoading] = useState(!stateRide);
   const [rating, setRating] = useState(0);
   const [hoveredRating, setHoveredRating] = useState(0);
   const [comment, setComment] = useState('');
@@ -21,6 +23,38 @@ export default function RateRide() {
 
   const isDriver = profile?.user_type === 'driver';
   const homePath = isDriver ? '/driver' : '/rider';
+
+  // Fallback: fetch last completed ride from DB if location.state is null (page refresh)
+  useEffect(() => {
+    if (stateRide || !user) {
+      setRideLoading(false);
+      return;
+    }
+
+    const fetchLastCompletedRide = async () => {
+      try {
+        const column = isDriver ? 'driver_id' : 'rider_id';
+        const { data } = await supabase
+          .from('rides')
+          .select('*')
+          .eq(column, user.id)
+          .eq('status', 'completed')
+          .order('completed_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (data) {
+          setRide(data);
+        }
+      } catch (err) {
+        console.warn('[TapRide] Failed to fetch last completed ride:', err);
+      } finally {
+        setRideLoading(false);
+      }
+    };
+
+    fetchLastCompletedRide();
+  }, [stateRide, user, isDriver]);
 
   const handleSubmit = async () => {
     if (rating === 0 || !ride || !user) return;
@@ -63,7 +97,16 @@ export default function RateRide() {
     navigate(homePath, { replace: true });
   };
 
-  // If no ride data was passed, redirect home
+  // Loading state for DB fallback
+  if (rideLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // If no ride data was found even after DB fallback, show message
   if (!ride) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
@@ -109,7 +152,7 @@ export default function RateRide() {
             Ride Completed
           </h2>
           <p className="text-center text-2xl font-bold text-primary-600 dark:text-primary-400 mb-4">
-            {formatFare(ride.fare_final || ride.fare_estimate || 0)}
+            {formatFare(Number(ride.fare_final || ride.fare_estimate) || 0)}
           </p>
 
           <div className="space-y-2 text-sm">
@@ -125,9 +168,9 @@ export default function RateRide() {
                 {ride.destination_address || 'Destination'}
               </p>
             </div>
-            {ride.distance_km > 0 && (
+            {Number(ride.distance_km) > 0 && (
               <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">
-                Distance: {ride.distance_km.toFixed(1)} km
+                Distance: {Number(ride.distance_km).toFixed(1)} km
               </p>
             )}
           </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import type { GeoPosition } from '../types';
 
 export function useLocation() {
@@ -61,10 +61,6 @@ export function useLocation() {
       setWatching(false);
     };
   }, []);
-
-  useEffect(() => {
-    getCurrentLocation().catch(() => {});
-  }, [getCurrentLocation]);
 
   return { position, error, watching, getCurrentLocation, startWatching };
 }

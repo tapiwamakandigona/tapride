@@ -51,14 +51,14 @@ export default function Register() {
         metadata.license_plate = licensePlate;
       }
 
-      const { error: signUpError } = await signUp(email, password, metadata);
-      if (signUpError) {
-        setError(signUpError);
+      const result = await signUp(email, password, metadata);
+      if (result.error) {
+        setError(result.error);
         return;
       }
 
-      // Navigate directly to role-based route to avoid double redirect through /
-      const path = userType === 'driver' ? '/driver' : '/rider';
+      // Use the userType returned from signUp
+      const path = result.userType === 'driver' ? '/driver' : '/rider';
       navigate(path, { replace: true });
     } catch {
       setError('An unexpected error occurred');

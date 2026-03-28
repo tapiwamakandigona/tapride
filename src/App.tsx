@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
+import ErrorBoundary from './components/ErrorBoundary';
 import AppLayout from './components/Layout/AppLayout';
 import Splash from './pages/Splash';
 import Login from './pages/Login';
@@ -54,70 +55,72 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white">
-      <Routes>
-        {/* Public routes */}
-        <Route path="/" element={<Splash />} />
-        <Route
-          path="/login"
-          element={
-            <GuestRoute>
-              <Login />
-            </GuestRoute>
-          }
-        />
-        <Route
-          path="/register"
-          element={
-            <GuestRoute>
-              <Register />
-            </GuestRoute>
-          }
-        />
+    <ErrorBoundary>
+      <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white">
+        <Routes>
+          {/* Public routes */}
+          <Route path="/" element={<Splash />} />
+          <Route
+            path="/login"
+            element={
+              <GuestRoute>
+                <Login />
+              </GuestRoute>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <GuestRoute>
+                <Register />
+              </GuestRoute>
+            }
+          />
 
-        {/* Protected routes with bottom navbar */}
-        <Route
-          element={
-            <ProtectedRoute>
-              <AppLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route path="/rider" element={<RiderDashboard />} />
-          <Route path="/driver" element={<DriverDashboard />} />
-          <Route path="/history" element={<RideHistory />} />
-          <Route path="/profile" element={<Profile />} />
-        </Route>
+          {/* Protected routes with bottom navbar */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/rider" element={<RiderDashboard />} />
+            <Route path="/driver" element={<DriverDashboard />} />
+            <Route path="/history" element={<RideHistory />} />
+            <Route path="/profile" element={<Profile />} />
+          </Route>
 
-        {/* Protected routes without bottom navbar */}
-        <Route
-          path="/ride/active"
-          element={
-            <ProtectedRoute>
-              <ActiveRide />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/ride/chat"
-          element={
-            <ProtectedRoute>
-              <ChatPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/ride/rate"
-          element={
-            <ProtectedRoute>
-              <RateRide />
-            </ProtectedRoute>
-          }
-        />
+          {/* Protected routes without bottom navbar */}
+          <Route
+            path="/ride/active"
+            element={
+              <ProtectedRoute>
+                <ActiveRide />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ride/chat"
+            element={
+              <ProtectedRoute>
+                <ChatPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ride/rate"
+            element={
+              <ProtectedRoute>
+                <RateRide />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </div>
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </div>
+    </ErrorBoundary>
   );
 }
