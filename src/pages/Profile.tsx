@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Profile() {
@@ -15,6 +15,18 @@ export default function Profile() {
   const [error, setError] = useState('');
 
   const isDriver = profile?.user_type === 'driver';
+
+  // Sync local state when profile changes (e.g. after refresh)
+  useEffect(() => {
+    if (profile) {
+      setFullName(profile.full_name || '');
+      setPhone(profile.phone || '');
+      setVehicleMake(profile.vehicle_make || '');
+      setVehicleModel(profile.vehicle_model || '');
+      setVehicleColor(profile.vehicle_color || '');
+      setLicensePlate(profile.license_plate || '');
+    }
+  }, [profile]);
 
   const handleSave = async () => {
     setLoading(true);
@@ -34,7 +46,12 @@ export default function Profile() {
         updates.license_plate = licensePlate;
       }
 
-      await updateProfile(updates);
+      const { error: updateError } = await updateProfile(updates);
+      if (updateError) {
+        setError(updateError);
+        return;
+      }
+
       setSuccess(true);
       setEditing(false);
       setTimeout(() => setSuccess(false), 3000);
@@ -85,7 +102,7 @@ export default function Profile() {
                 {isDriver ? 'Driver' : 'Rider'}
               </span>
             </div>
-            {profile?.rating && (
+            {profile?.rating != null && profile.rating > 0 && (
               <div className="flex items-center gap-1 flex-shrink-0">
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                   <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />

@@ -115,7 +115,7 @@ export default function RideHistory() {
 
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700">
                   <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-                    {ride.distance_km && (
+                    {ride.distance_km > 0 && (
                       <span>{ride.distance_km.toFixed(1)} km</span>
                     )}
                   </div>

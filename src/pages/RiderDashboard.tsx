@@ -3,17 +3,23 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useRide } from '../hooks/useRide';
 import { useLocation as useGeoLocation } from '../hooks/useLocation';
+import { reverseGeocode } from '../lib/geo';
+import { haversineDistance } from '../lib/geo';
 import MapView from '../components/Map/MapView';
 import RideRequestForm from '../components/Ride/RideRequestForm';
 import type { LocationCoords } from '../types';
 
+const MIN_RIDE_DISTANCE_KM = 0.1; // 100 meters minimum
+
 export default function RiderDashboard() {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const { currentRide, requestRide, cancelRide, subscribeToRide } = useRide();
+  const { currentRide, initializing, requestRide, cancelRide } = useRide();
   const { position, error: locationError, getCurrentLocation } = useGeoLocation();
   const [pickup, setPickup] = useState<LocationCoords | null>(null);
   const [destination, setDestination] = useState<LocationCoords | null>(null);
+  const [pickupAddress, setPickupAddress] = useState('');
+  const [destAddress, setDestAddress] = useState('');
   const [selectingFor, setSelectingFor] = useState<'pickup' | 'destination' | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -27,16 +33,9 @@ export default function RiderDashboard() {
   useEffect(() => {
     if (position && !pickup) {
       setPickup({ lat: position.lat, lng: position.lng });
+      reverseGeocode(position.lat, position.lng).then(setPickupAddress);
     }
   }, [position, pickup]);
-
-  // Subscribe to active ride updates
-  useEffect(() => {
-    if (currentRide?.id) {
-      const unsubscribe = subscribeToRide(currentRide.id);
-      return () => { unsubscribe(); };
-    }
-  }, [currentRide?.id, subscribeToRide]);
 
   // Navigate to active ride screen when ride is accepted
   useEffect(() => {
@@ -45,13 +44,17 @@ export default function RiderDashboard() {
     }
   }, [currentRide, navigate]);
 
-  const handleMapClick = useCallback((lat: number, lng: number) => {
+  const handleMapClick = useCallback(async (lat: number, lng: number) => {
     if (selectingFor === 'pickup') {
       setPickup({ lat, lng });
       setSelectingFor(null);
+      const addr = await reverseGeocode(lat, lng);
+      setPickupAddress(addr);
     } else if (selectingFor === 'destination') {
       setDestination({ lat, lng });
       setSelectingFor(null);
+      const addr = await reverseGeocode(lat, lng);
+      setDestAddress(addr);
     }
   }, [selectingFor]);
 
@@ -61,13 +64,20 @@ export default function RiderDashboard() {
       return;
     }
 
+    // Validate minimum distance
+    const dist = haversineDistance(pickup.lat, pickup.lng, destination.lat, destination.lng);
+    if (dist < MIN_RIDE_DISTANCE_KM) {
+      setError('Pickup and destination are too close. Please choose locations at least 100m apart.');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
       await requestRide(
-        pickup.lat, pickup.lng, 'Pickup location',
-        destination.lat, destination.lng, 'Destination'
+        pickup.lat, pickup.lng, pickupAddress || 'Pickup location',
+        destination.lat, destination.lng, destAddress || 'Destination'
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to request ride';
@@ -83,11 +93,22 @@ export default function RiderDashboard() {
       await cancelRide(currentRide.id);
       setPickup(null);
       setDestination(null);
+      setPickupAddress('');
+      setDestAddress('');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to cancel ride';
       setError(message);
     }
   };
+
+  // Show loading spinner while useRide initializes
+  if (initializing) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">

@@ -7,6 +7,19 @@
     <meta name="theme-color" content="#1a6df5" />
     <meta name="description" content="TapRide - Fast, reliable rides at your fingertips" />
     <title>TapRide</title>
+    <!-- SPA redirect decoder for GitHub Pages 404 handling -->
+    <script>
+      (function(l) {
+        if (l.search[1] === '/') {
+          var decoded = l.search.slice(1).split('&').map(function(s) {
+            return s.replace(/~and~/g, '&');
+          }).join('?');
+          window.history.replaceState(null, null,
+            l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+      }(window.location));
+    </script>
   </head>
   <body class="bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
     <div id="root"></div>

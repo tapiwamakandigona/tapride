@@ -33,6 +33,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function GuestRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
 
+  // Wait for both auth AND profile to finish loading before redirecting
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -41,11 +42,13 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (user) {
-    const path = profile?.user_type === 'driver' ? '/driver' : '/rider';
+  if (user && profile) {
+    const path = profile.user_type === 'driver' ? '/driver' : '/rider';
     return <Navigate to={path} replace />;
   }
 
+  // If user exists but profile hasn't loaded yet, still show guest content
+  // (this handles edge case of orphaned auth with no profile row)
   return <>{children}</>;
 }
 

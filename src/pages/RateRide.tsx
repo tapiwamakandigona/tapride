@@ -1,14 +1,18 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useRide } from '../hooks/useRide';
 import { supabase } from '../lib/supabase';
 import { formatFare } from '../lib/fare';
+import type { Ride } from '../types';
 
 export default function RateRide() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, profile } = useAuth();
-  const { currentRide, clearCurrentRide } = useRide();
+
+  // Read the completed ride from router state (passed by ActiveRide)
+  const ride: Ride | null = (location.state as { ride?: Ride } | null)?.ride ?? null;
+
   const [rating, setRating] = useState(0);
   const [hoveredRating, setHoveredRating] = useState(0);
   const [comment, setComment] = useState('');
@@ -16,42 +20,65 @@ export default function RateRide() {
   const [submitted, setSubmitted] = useState(false);
 
   const isDriver = profile?.user_type === 'driver';
+  const homePath = isDriver ? '/driver' : '/rider';
 
   const handleSubmit = async () => {
-    if (rating === 0 || !currentRide || !user) return;
+    if (rating === 0 || !ride || !user) return;
+
+    // Guard: the person being rated must exist
+    const ratedId = isDriver ? ride.rider_id : ride.driver_id;
+    if (!ratedId) {
+      // Can't rate if there's no counterpart — just navigate home
+      navigate(homePath, { replace: true });
+      return;
+    }
 
     setLoading(true);
     try {
-      const ratedId = isDriver ? currentRide.rider_id : currentRide.driver_id;
-
-      await supabase.from('ratings').insert({
-        ride_id: currentRide.id,
+      const { error } = await supabase.from('ratings').insert({
+        ride_id: ride.id,
         rater_id: user.id,
         rated_id: ratedId,
         score: rating,
         comment: comment.trim() || null,
       });
 
+      if (error) throw error;
+
       setSubmitted(true);
 
       // Navigate after a short delay
       setTimeout(() => {
-        clearCurrentRide();
-        navigate(isDriver ? '/driver' : '/rider', { replace: true });
+        navigate(homePath, { replace: true });
       }, 1500);
     } catch {
       // Still navigate on error
-      clearCurrentRide();
-      navigate(isDriver ? '/driver' : '/rider', { replace: true });
+      navigate(homePath, { replace: true });
     } finally {
       setLoading(false);
     }
   };
 
   const handleSkip = () => {
-    clearCurrentRide();
-    navigate(isDriver ? '/driver' : '/rider', { replace: true });
+    navigate(homePath, { replace: true });
   };
+
+  // If no ride data was passed, redirect home
+  if (!ride) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+        <div className="text-center">
+          <p className="text-gray-500 dark:text-gray-400 mb-4">No ride data available.</p>
+          <button
+            onClick={() => navigate(homePath, { replace: true })}
+            className="bg-primary-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary-700 transition-colors"
+          >
+            Go Home
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (submitted) {
     return (
@@ -81,33 +108,29 @@ export default function RateRide() {
           <h2 className="text-center text-lg font-semibold text-gray-900 dark:text-white mb-1">
             Ride Completed
           </h2>
-          {currentRide && (
-            <p className="text-center text-2xl font-bold text-primary-600 dark:text-primary-400 mb-4">
-              {formatFare(currentRide.fare_final || currentRide.fare_estimate || 0)}
-            </p>
-          )}
+          <p className="text-center text-2xl font-bold text-primary-600 dark:text-primary-400 mb-4">
+            {formatFare(ride.fare_final || ride.fare_estimate || 0)}
+          </p>
 
-          {currentRide && (
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0" />
-                <p className="text-gray-600 dark:text-gray-400 truncate">
-                  {currentRide.pickup_address || 'Pickup'}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0" />
-                <p className="text-gray-600 dark:text-gray-400 truncate">
-                  {currentRide.destination_address || 'Destination'}
-                </p>
-              </div>
-              {currentRide.distance_km && (
-                <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">
-                  Distance: {currentRide.distance_km.toFixed(1)} km
-                </p>
-              )}
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0" />
+              <p className="text-gray-600 dark:text-gray-400 truncate">
+                {ride.pickup_address || 'Pickup'}
+              </p>
             </div>
-          )}
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0" />
+              <p className="text-gray-600 dark:text-gray-400 truncate">
+                {ride.destination_address || 'Destination'}
+              </p>
+            </div>
+            {ride.distance_km > 0 && (
+              <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">
+                Distance: {ride.distance_km.toFixed(1)} km
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Rating */}
@@ -129,6 +152,7 @@ export default function RateRide() {
                 onMouseEnter={() => setHoveredRating(star)}
                 onMouseLeave={() => setHoveredRating(0)}
                 className="transition-transform hover:scale-110"
+                aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -155,6 +179,7 @@ export default function RateRide() {
             onChange={(e) => setComment(e.target.value)}
             placeholder="Leave a comment (optional)"
             rows={3}
+            maxLength={500}
             className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all resize-none mb-4"
           />
 

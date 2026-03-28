@@ -11,11 +11,12 @@ import type { Ride } from '../types';
 export default function DriverDashboard() {
   const navigate = useNavigate();
   const { profile, updateProfile } = useAuth();
-  const { currentRide, acceptRide, updateDriverLocation, fetchNearbyRequests } = useRide();
+  const { currentRide, initializing, acceptRide, updateDriverLocation, fetchNearbyRequests } = useRide();
   const { position, getCurrentLocation, startWatching } = useGeoLocation();
   const [isOnline, setIsOnline] = useState(profile?.is_online ?? false);
   const [nearbyRequests, setNearbyRequests] = useState<Ride[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
+  const [toggleLoading, setToggleLoading] = useState(false);
   const [error, setError] = useState('');
 
   // Get current location on mount
@@ -86,7 +87,8 @@ export default function DriverDashboard() {
   }, [currentRide, navigate]);
 
   const handleToggleOnline = useCallback(async () => {
-    setLoading(true);
+    if (!profile?.id) return;
+    setToggleLoading(true);
     try {
       const newStatus = !isOnline;
       await updateProfile({ is_online: newStatus });
@@ -97,17 +99,17 @@ export default function DriverDashboard() {
         await supabase
           .from('driver_locations')
           .delete()
-          .eq('driver_id', profile?.id);
+          .eq('driver_id', profile.id);
       }
     } catch {
       setError('Failed to update status');
     } finally {
-      setLoading(false);
+      setToggleLoading(false);
     }
   }, [isOnline, profile?.id, updateProfile]);
 
   const handleAcceptRide = async (rideId: string) => {
-    setLoading(true);
+    setAcceptingRideId(rideId);
     setError('');
     try {
       await acceptRide(rideId);
@@ -115,9 +117,18 @@ export default function DriverDashboard() {
       const message = err instanceof Error ? err.message : 'Failed to accept ride';
       setError(message);
     } finally {
-      setLoading(false);
+      setAcceptingRideId(null);
     }
   };
+
+  // Show loading spinner while useRide initializes
+  if (initializing) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -133,14 +144,14 @@ export default function DriverDashboard() {
         </div>
         <button
           onClick={handleToggleOnline}
-          disabled={loading}
+          disabled={toggleLoading}
           className={`px-4 py-2 rounded-full font-semibold text-sm transition-all ${
             isOnline
               ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
               : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
           }`}
         >
-          {isOnline ? 'Online' : 'Offline'}
+          {toggleLoading ? '...' : isOnline ? 'Online' : 'Offline'}
         </button>
       </div>
 
@@ -200,7 +211,7 @@ export default function DriverDashboard() {
                   key={ride.id}
                   ride={ride}
                   onAccept={() => handleAcceptRide(ride.id)}
-                  loading={loading}
+                  loading={acceptingRideId === ride.id}
                 />
               ))}
             </div>

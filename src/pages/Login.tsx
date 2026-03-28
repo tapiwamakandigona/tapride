@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { signIn } = useAuth();
+  const { signIn, profile } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -22,7 +22,9 @@ export default function Login() {
         setError(signInError);
         return;
       }
-      navigate('/', { replace: true });
+      // Navigate directly to role-based route to avoid double redirect through /
+      const path = profile?.user_type === 'driver' ? '/driver' : '/rider';
+      navigate(path, { replace: true });
     } catch {
       setError('An unexpected error occurred');
     } finally {
@@ -103,6 +105,7 @@ export default function Login() {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? (
                   <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

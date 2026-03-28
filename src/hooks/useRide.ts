@@ -10,10 +10,14 @@ export function useRide() {
   const [currentRide, setCurrentRide] = useState<Ride | null>(null);
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
 
   // Fetch active ride for current user
   const fetchActiveRide = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      setInitializing(false);
+      return;
+    }
     const activeStatuses: RideStatus[] = ['requested', 'accepted', 'in_progress'];
     const column = profile?.user_type === 'driver' ? 'driver_id' : 'rider_id';
 
@@ -27,6 +31,7 @@ export function useRide() {
       .maybeSingle();
 
     setCurrentRide(data);
+    setInitializing(false);
   }, [user, profile]);
 
   // Request a ride (rider)
@@ -99,8 +104,8 @@ export function useRide() {
     await fetchActiveRide();
   };
 
-  // Complete ride
-  const completeRide = async (rideId: string) => {
+  // Complete ride — returns the completed ride data for the rating page
+  const completeRide = async (rideId: string): Promise<Ride | null> => {
     const { error } = await supabase
       .from('rides')
       .update({
@@ -110,8 +115,11 @@ export function useRide() {
       })
       .eq('id', rideId);
     if (error) throw new Error(error.message);
-    // Keep the ride in state briefly for the rating page
-    setCurrentRide((prev) => prev ? { ...prev, status: 'completed' } : null);
+
+    // Capture the completed ride before clearing
+    const completedRide = currentRide ? { ...currentRide, status: 'completed' as RideStatus } : null;
+    setCurrentRide(null);
+    return completedRide;
   };
 
   // Cancel ride
@@ -152,7 +160,7 @@ export function useRide() {
         table: 'rides',
         filter: `id=eq.${rideId}`,
       }, (payload) => {
-        setCurrentRide((prev) => prev ? { ...prev, ...payload.new } : null);
+        setCurrentRide((prev) => prev ? { ...prev, ...(payload.new as Partial<Ride>) } : null);
       })
       .subscribe();
 
@@ -184,7 +192,7 @@ export function useRide() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Fetch nearby ride requests (driver) — no params, uses all requested rides
+  // Fetch nearby ride requests (driver)
   const fetchNearbyRequests = useCallback(async (): Promise<Ride[]> => {
     const { data } = await supabase
       .from('rides')
@@ -220,6 +228,7 @@ export function useRide() {
     currentRide,
     driverLocation,
     loading,
+    initializing,
     requestRide,
     acceptRide,
     startRide,

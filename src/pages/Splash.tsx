@@ -25,7 +25,7 @@ export default function Splash() {
       } else {
         navigate('/rider', { replace: true });
       }
-    }, 2000);
+    }, 800);
 
     return () => clearTimeout(timer);
   }, [user, profile, loading, checking, needsUpdate, navigate]);

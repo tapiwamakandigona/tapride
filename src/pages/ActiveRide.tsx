@@ -1,23 +1,24 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useRide } from '../hooks/useRide';
 import { useLocation as useGeoLocation } from '../hooks/useLocation';
 import MapView from '../components/Map/MapView';
 import { formatFare } from '../lib/fare';
+import type { Ride } from '../types';
 
 export default function ActiveRide() {
   const navigate = useNavigate();
+  const routeLocation = useLocation();
   const { profile } = useAuth();
   const {
     currentRide,
     driverLocation,
+    initializing,
     startRide,
     completeRide,
     cancelRide,
     updateDriverLocation,
-    subscribeToRide,
-    subscribeToDriverLocation,
   } = useRide();
   const { position, startWatching } = useGeoLocation();
   const [loading, setLoading] = useState(false);
@@ -25,33 +26,18 @@ export default function ActiveRide() {
 
   const isDriver = profile?.user_type === 'driver';
 
-  // If no active ride, redirect back
+  // If no active ride (after initializing completes), redirect back
   useEffect(() => {
+    if (initializing) return;
     if (!currentRide || currentRide.status === 'completed' || currentRide.status === 'cancelled') {
       if (currentRide?.status === 'completed') {
-        navigate('/ride/rate', { replace: true });
+        navigate('/ride/rate', { replace: true, state: { ride: currentRide } });
       } else {
         const path = isDriver ? '/driver' : '/rider';
         navigate(path, { replace: true });
       }
     }
-  }, [currentRide, isDriver, navigate]);
-
-  // Subscribe to ride updates
-  useEffect(() => {
-    if (currentRide?.id) {
-      const unsub = subscribeToRide(currentRide.id);
-      return () => { unsub(); };
-    }
-  }, [currentRide?.id, subscribeToRide]);
-
-  // Subscribe to driver location (rider side)
-  useEffect(() => {
-    if (!isDriver && currentRide?.driver_id) {
-      const unsub = subscribeToDriverLocation(currentRide.driver_id);
-      return () => { unsub(); };
-    }
-  }, [isDriver, currentRide?.driver_id, subscribeToDriverLocation]);
+  }, [currentRide, initializing, isDriver, navigate]);
 
   // Driver: track own location
   useEffect(() => {
@@ -67,6 +53,15 @@ export default function ActiveRide() {
       updateDriverLocation(position.lat, position.lng, position.heading, position.speed);
     }
   }, [isDriver, position, updateDriverLocation]);
+
+  // Show loading while initializing
+  if (initializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (!currentRide) return null;
 
@@ -86,7 +81,8 @@ export default function ActiveRide() {
     setLoading(true);
     setError('');
     try {
-      await completeRide(currentRide.id);
+      const completedRide = await completeRide(currentRide.id);
+      navigate('/ride/rate', { replace: true, state: { ride: completedRide } });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to complete ride');
     } finally {
@@ -184,7 +180,7 @@ export default function ActiveRide() {
             <p className="text-lg font-bold text-gray-900 dark:text-white">
               {formatFare(currentRide.fare_estimate || 0)}
             </p>
-            {currentRide.distance_km && (
+            {currentRide.distance_km > 0 && (
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 {currentRide.distance_km.toFixed(1)} km
               </p>
