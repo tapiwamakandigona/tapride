@@ -1,9 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { Ride, RideStatus, DriverLocation } from '../types';
 import { haversineDistance } from '../lib/geo';
 import { calculateFare } from '../lib/fare';
+
+// Select with joined rider/driver profiles
+const RIDE_SELECT = '*, rider:profiles!rides_rider_id_fkey(*), driver:profiles!rides_driver_id_fkey(*)';
+// Fallback without FK join (in case FK names differ)
+const RIDE_SELECT_FALLBACK = '*';
 
 export function useRide() {
   const { user, profile } = useAuth();
@@ -11,8 +16,14 @@ export function useRide() {
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const mountedRef = useRef(true);
 
-  // Fetch active ride for current user
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // Fetch active ride for current user — with profile join
   const fetchActiveRide = useCallback(async () => {
     if (!user) {
       setInitializing(false);
@@ -22,23 +33,39 @@ export function useRide() {
       const activeStatuses: RideStatus[] = ['requested', 'accepted', 'in_progress'];
 
       // For drivers, check driver_id. For riders, check rider_id.
-      // Also check rider_id for drivers who might not have a driver_id yet on 'requested' rides
       const column = profile?.user_type === 'driver' ? 'driver_id' : 'rider_id';
 
-      const { data } = await supabase
+      // Try with profile join first
+      let data: Ride | null = null;
+      const { data: joined, error: joinErr } = await supabase
         .from('rides')
-        .select('*')
+        .select(RIDE_SELECT)
         .eq(column, user.id)
         .in('status', activeStatuses)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      setCurrentRide(data);
+      if (joinErr) {
+        // Fallback without join
+        const { data: fallback } = await supabase
+          .from('rides')
+          .select(RIDE_SELECT_FALLBACK)
+          .eq(column, user.id)
+          .in('status', activeStatuses)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        data = fallback as Ride | null;
+      } else {
+        data = joined as Ride | null;
+      }
+
+      if (mountedRef.current) setCurrentRide(data);
     } catch (err) {
       console.warn('[TapRide] fetchActiveRide error:', err);
     } finally {
-      setInitializing(false);
+      if (mountedRef.current) setInitializing(false);
     }
   }, [user, profile?.user_type]);
 
@@ -55,7 +82,6 @@ export function useRide() {
     if (!user) throw new Error('Not authenticated');
     setLoading(true);
 
-    // Use OSRM route distance if available, otherwise haversine
     const distanceKm = routeDistanceKm ?? haversineDistance(pickupLat, pickupLng, destLat, destLng);
     const fareEstimate = calculateFare(distanceKm);
 
@@ -74,14 +100,37 @@ export function useRide() {
           fare_estimate: fareEstimate,
           distance_km: Math.round(distanceKm * 10) / 10,
         })
-        .select('*')
+        .select(RIDE_SELECT)
         .single();
 
-      if (error) throw new Error(error.message);
-      if (data) setCurrentRide(data);
+      if (error) {
+        // Fallback without join
+        const { data: fallback, error: fallbackErr } = await supabase
+          .from('rides')
+          .insert({
+            rider_id: user.id,
+            pickup_lat: pickupLat,
+            pickup_lng: pickupLng,
+            pickup_address: pickupAddress,
+            destination_lat: destLat,
+            destination_lng: destLng,
+            destination_address: destAddress,
+            status: 'requested' as RideStatus,
+            fare_estimate: fareEstimate,
+            distance_km: Math.round(distanceKm * 10) / 10,
+          })
+          .select('*')
+          .single();
+
+        if (fallbackErr) throw new Error(fallbackErr.message);
+        if (fallback && mountedRef.current) setCurrentRide(fallback);
+        return fallback;
+      }
+
+      if (data && mountedRef.current) setCurrentRide(data);
       return data;
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   };
 
@@ -100,18 +149,37 @@ export function useRide() {
         })
         .eq('id', rideId)
         .eq('status', 'requested')
-        .select('*')
+        .select(RIDE_SELECT)
         .single();
 
       if (error) {
         if (error.code === 'PGRST116') {
           throw new Error('This ride was already accepted by another driver');
         }
-        throw new Error(error.message);
+        // Fallback: try without join
+        const { data: fallback, error: fallbackErr } = await supabase
+          .from('rides')
+          .update({
+            driver_id: user.id,
+            status: 'accepted' as RideStatus,
+            accepted_at: new Date().toISOString(),
+          })
+          .eq('id', rideId)
+          .select('*')
+          .single();
+
+        if (fallbackErr) {
+          if (fallbackErr.code === 'PGRST116') {
+            throw new Error('This ride was already accepted by another driver');
+          }
+          throw new Error(fallbackErr.message);
+        }
+        if (fallback && mountedRef.current) setCurrentRide(fallback);
+        return;
       }
-      if (data) setCurrentRide(data);
+      if (data && mountedRef.current) setCurrentRide(data);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   };
 
@@ -132,14 +200,13 @@ export function useRide() {
       .update({
         status: 'completed' as RideStatus,
         completed_at: new Date().toISOString(),
-        fare_final: currentRide?.fare_estimate ?? 0,
+        fare_final: Number(currentRide?.fare_estimate) || 0,
       })
       .eq('id', rideId);
     if (error) throw new Error(error.message);
 
-    // Capture the completed ride before clearing
     const completedRide = currentRide ? { ...currentRide, status: 'completed' as RideStatus } : null;
-    setCurrentRide(null);
+    if (mountedRef.current) setCurrentRide(null);
     return completedRide;
   };
 
@@ -150,7 +217,7 @@ export function useRide() {
       .update({ status: 'cancelled' as RideStatus })
       .eq('id', rideId);
     if (error) throw new Error(error.message);
-    setCurrentRide(null);
+    if (mountedRef.current) setCurrentRide(null);
   };
 
   // Clear current ride from state
@@ -181,7 +248,16 @@ export function useRide() {
         table: 'rides',
         filter: `id=eq.${rideId}`,
       }, (payload) => {
-        setCurrentRide((prev) => prev ? { ...prev, ...(payload.new as Partial<Ride>) } : null);
+        const updated = payload.new as Ride;
+        if (updated.status === 'cancelled' || updated.status === 'completed') {
+          // Ride ended — clear state (the useEffect in ActiveRide handles navigation)
+          if (mountedRef.current) setCurrentRide(updated);
+        } else {
+          // Merge the update into current ride, preserving joined profile data
+          if (mountedRef.current) {
+            setCurrentRide((prev) => prev ? { ...prev, ...updated, rider: prev.rider, driver: prev.driver } : updated);
+          }
+        }
       })
       .subscribe();
 
@@ -196,7 +272,7 @@ export function useRide() {
       .select('*')
       .eq('driver_id', driverId)
       .single()
-      .then(({ data }) => { if (data) setDriverLocation(data); });
+      .then(({ data }) => { if (data && mountedRef.current) setDriverLocation(data); });
 
     const channel = supabase
       .channel(`driver-loc-${driverId}`)
@@ -206,7 +282,7 @@ export function useRide() {
         table: 'driver_locations',
         filter: `driver_id=eq.${driverId}`,
       }, (payload) => {
-        setDriverLocation(payload.new as DriverLocation);
+        if (mountedRef.current) setDriverLocation(payload.new as DriverLocation);
       })
       .subscribe();
 
@@ -217,7 +293,7 @@ export function useRide() {
   const fetchNearbyRequests = useCallback(async (): Promise<Ride[]> => {
     const { data, error } = await supabase
       .from('rides')
-      .select('*, rider:profiles!rides_rider_id_fkey(*)')
+      .select(RIDE_SELECT)
       .eq('status', 'requested')
       .is('driver_id', null)
       .order('created_at', { ascending: false })

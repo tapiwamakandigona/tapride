@@ -19,7 +19,7 @@ export default function ActiveRide() {
     cancelRide,
     updateDriverLocation,
   } = useRide();
-  const { position, startWatching } = useGeoLocation();
+  const { position, startWatching } = useGeoLocation(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [route, setRoute] = useState<RouteResult | null>(null);
@@ -44,10 +44,10 @@ export default function ActiveRide() {
     if (!currentRide) return;
     let cancelled = false;
     getRoute(
-      currentRide.pickup_lat,
-      currentRide.pickup_lng,
-      currentRide.destination_lat,
-      currentRide.destination_lng
+      Number(currentRide.pickup_lat),
+      Number(currentRide.pickup_lng),
+      Number(currentRide.destination_lat),
+      Number(currentRide.destination_lng)
     ).then((r) => {
       if (!cancelled) setRoute(r);
     });
@@ -133,6 +133,15 @@ export default function ActiveRide() {
     ? position ? { lat: position.lat, lng: position.lng } : undefined
     : driverLocation ? { lat: driverLocation.lat, lng: driverLocation.lng } : undefined;
 
+  // Other party info
+  const otherParty = isDriver ? currentRide.rider : currentRide.driver;
+  const otherName = otherParty?.full_name;
+  const otherRating = otherParty?.rating;
+  const vehicleInfo = !isDriver && currentRide.driver
+    ? [currentRide.driver.vehicle_color, currentRide.driver.vehicle_make, currentRide.driver.vehicle_model].filter(Boolean).join(' ')
+    : null;
+  const licensePlate = !isDriver ? currentRide.driver?.license_plate : null;
+
   return (
     <div className="flex flex-col h-full">
       {/* Status Bar */}
@@ -169,8 +178,8 @@ export default function ActiveRide() {
         <MapView
           center={driverPos ? [driverPos.lat, driverPos.lng] : undefined}
           userPosition={!isDriver && position ? { lat: position.lat, lng: position.lng } : undefined}
-          pickupPosition={{ lat: currentRide.pickup_lat, lng: currentRide.pickup_lng }}
-          destinationPosition={{ lat: currentRide.destination_lat, lng: currentRide.destination_lng }}
+          pickupPosition={{ lat: Number(currentRide.pickup_lat), lng: Number(currentRide.pickup_lng) }}
+          destinationPosition={{ lat: Number(currentRide.destination_lat), lng: Number(currentRide.destination_lng) }}
           driverPosition={driverPos}
           routeCoords={route?.coordinates}
           className="h-full w-full"
@@ -182,6 +191,27 @@ export default function ActiveRide() {
         {error && (
           <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl p-2 mb-3">
             <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
+          </div>
+        )}
+
+        {/* Other party info */}
+        {otherName && (
+          <div className="flex items-center gap-3 mb-3 pb-3 border-b border-gray-100 dark:border-gray-700">
+            <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/40 rounded-full flex items-center justify-center text-primary-600 dark:text-primary-400 font-bold">
+              {otherName.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold text-gray-900 dark:text-white text-sm">
+                {otherName}
+              </p>
+              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                {otherRating != null && Number(otherRating) > 0 && (
+                  <span>{Number(otherRating).toFixed(1)}/5</span>
+                )}
+                {vehicleInfo && <span>{vehicleInfo}</span>}
+                {licensePlate && <span>({licensePlate})</span>}
+              </div>
+            </div>
           </div>
         )}
 
@@ -222,7 +252,7 @@ export default function ActiveRide() {
               disabled={loading}
               className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-semibold py-3 rounded-xl transition-colors"
             >
-              {loading ? 'Starting...' : 'Start Ride'}
+              {loading ? 'Starting...' : 'Picked Up - Start Ride'}
             </button>
           )}
 
@@ -240,7 +270,7 @@ export default function ActiveRide() {
             <button
               onClick={handleCancel}
               disabled={loading}
-              className={`${isDriver ? 'px-4' : 'flex-1'} py-3 rounded-xl border-2 border-red-500 text-red-500 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors`}
+              className={`${isDriver && currentRide.status === 'accepted' ? 'px-4' : 'flex-1'} py-3 rounded-xl border-2 border-red-500 text-red-500 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50`}
             >
               Cancel
             </button>

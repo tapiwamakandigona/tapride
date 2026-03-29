@@ -60,13 +60,15 @@ function RecenterMap({ center, auto }: { center: [number, number]; auto?: boolea
 
 function FitBounds({ coords }: { coords: [number, number][] }) {
   const map = useMap();
-  const fitted = useRef(false);
+  const lastCoordsKey = useRef('');
   useEffect(() => {
-    if (coords.length >= 2 && !fitted.current) {
-      const bounds = L.latLngBounds(coords.map(c => L.latLng(c[0], c[1])));
-      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
-      fitted.current = true;
-    }
+    if (coords.length < 2) return;
+    // Create a key from first and last coords to detect route changes
+    const key = `${coords[0][0]},${coords[0][1]}-${coords[coords.length - 1][0]},${coords[coords.length - 1][1]}`;
+    if (key === lastCoordsKey.current) return;
+    lastCoordsKey.current = key;
+    const bounds = L.latLngBounds(coords.map(c => L.latLng(c[0], c[1])));
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
   }, [coords, map]);
   return null;
 }
@@ -137,7 +139,7 @@ export default function MapView({
   const defaultCenter: [number, number] = center
     || (userPosition ? [userPosition.lat, userPosition.lng] : [-20.1325, 28.6265]); // Bulawayo default
 
-  const [recenterTrigger, setRecenterTrigger] = useState(false);
+  const [recenterTrigger] = useState(false);
 
   // Auto-fit bounds when route is provided
   const shouldFitRoute = routeCoords && routeCoords.length >= 2;

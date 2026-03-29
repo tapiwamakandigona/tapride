@@ -102,25 +102,25 @@ export default function RideHistory() {
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0" />
                     <p className="text-sm text-gray-700 dark:text-gray-300 truncate">
-                      {ride.pickup_address || `${ride.pickup_lat.toFixed(4)}, ${ride.pickup_lng.toFixed(4)}`}
+                      {ride.pickup_address || `${Number(ride.pickup_lat).toFixed(4)}, ${Number(ride.pickup_lng).toFixed(4)}`}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0" />
                     <p className="text-sm text-gray-700 dark:text-gray-300 truncate">
-                      {ride.destination_address || `${ride.destination_lat.toFixed(4)}, ${ride.destination_lng.toFixed(4)}`}
+                      {ride.destination_address || `${Number(ride.destination_lat).toFixed(4)}, ${Number(ride.destination_lng).toFixed(4)}`}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700">
                   <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-                    {ride.distance_km > 0 && (
-                      <span>{ride.distance_km.toFixed(1)} km</span>
+                    {Number(ride.distance_km) > 0 && (
+                      <span>{Number(ride.distance_km).toFixed(1)} km</span>
                     )}
                   </div>
                   <p className="font-bold text-gray-900 dark:text-white">
-                    {formatFare(ride.fare_final || ride.fare_estimate || 0)}
+                    {formatFare(Number(ride.fare_final || ride.fare_estimate || 0))}
                   </p>
                 </div>
               </div>

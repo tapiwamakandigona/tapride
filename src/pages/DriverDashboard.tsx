@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useRide } from '../hooks/useRide';
@@ -8,16 +8,57 @@ import RideRequestCard from '../components/Ride/RideRequestCard';
 import { supabase } from '../lib/supabase';
 import type { Ride } from '../types';
 
+// Play a beep sound using Web Audio API (no external files needed)
+function playNewRequestSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.5);
+    // Play a second beep
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.frequency.value = 1100;
+    osc2.type = 'sine';
+    gain2.gain.setValueAtTime(0.3, ctx.currentTime + 0.3);
+    gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
+    osc2.start(ctx.currentTime + 0.3);
+    osc2.stop(ctx.currentTime + 0.8);
+  } catch {
+    // Silently fail — not all browsers support AudioContext
+  }
+}
+
+function vibrateDevice() {
+  try {
+    if ('vibrate' in navigator) {
+      navigator.vibrate([200, 100, 200]);
+    }
+  } catch {
+    // Silently fail
+  }
+}
+
 export default function DriverDashboard() {
   const navigate = useNavigate();
   const { profile, updateProfile } = useAuth();
   const { currentRide, initializing, acceptRide, updateDriverLocation, fetchNearbyRequests } = useRide();
-  const { position, startWatching } = useGeoLocation();
+  const { position, startWatching } = useGeoLocation(false); // Don't auto-start GPS; start when online
   const [isOnline, setIsOnline] = useState(profile?.is_online ?? false);
   const [nearbyRequests, setNearbyRequests] = useState<Ride[]>([]);
   const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
   const [toggleLoading, setToggleLoading] = useState(false);
   const [error, setError] = useState('');
+  const prevRequestCount = useRef(0);
 
   // Start watching location when online
   useEffect(() => {
@@ -38,20 +79,33 @@ export default function DriverDashboard() {
   useEffect(() => {
     if (!isOnline) {
       setNearbyRequests([]);
+      prevRequestCount.current = 0;
       return;
     }
 
     const loadRequests = async () => {
       try {
         const requests = await fetchNearbyRequests();
-        setNearbyRequests(requests);
+        setNearbyRequests((prev) => {
+          // Notify if there are new requests
+          if (requests.length > prev.length && prev.length > 0) {
+            playNewRequestSound();
+            vibrateDevice();
+          } else if (requests.length > 0 && prevRequestCount.current === 0) {
+            // First load with requests
+            playNewRequestSound();
+            vibrateDevice();
+          }
+          prevRequestCount.current = requests.length;
+          return requests;
+        });
       } catch {
         // Silently fail, will retry
       }
     };
 
     loadRequests();
-    const interval = setInterval(loadRequests, 10000); // Poll every 10s
+    const interval = setInterval(loadRequests, 8000); // Poll every 8s (slightly faster)
 
     // Also subscribe to new ride requests in realtime
     const channel = supabase
@@ -59,7 +113,12 @@ export default function DriverDashboard() {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'rides', filter: 'status=eq.requested' },
-        () => { loadRequests(); }
+        () => {
+          // New ride inserted — play sound and reload
+          playNewRequestSound();
+          vibrateDevice();
+          loadRequests();
+        }
       )
       .on(
         'postgres_changes',
@@ -211,12 +270,24 @@ export default function DriverDashboard() {
 
           {nearbyRequests.length === 0 ? (
             <div className="p-6 text-center">
-              <p className="text-gray-500 dark:text-gray-400 text-sm">
-                No ride requests nearby. Stay online and they'll appear here.
+              <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-3">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              </div>
+              <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">
+                No ride requests nearby
+              </p>
+              <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">
+                Stay online — new requests will appear here automatically
               </p>
             </div>
           ) : (
             <div className="p-4 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                New Ride Requests
+              </p>
               {nearbyRequests.map((ride) => (
                 <RideRequestCard
                   key={ride.id}

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../hooks/useChat';
 import { useRide } from '../hooks/useRide';
+import { supabase } from '../lib/supabase';
 import ChatBubble from '../components/Chat/ChatBubble';
 
 export default function ChatPage() {
@@ -13,6 +14,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
+  const [otherPersonName, setOtherPersonName] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom
@@ -26,6 +28,35 @@ export default function ChatPage() {
       navigate(-1);
     }
   }, [currentRide, initializing, navigate]);
+
+  // Fetch the other person's name if not available from the join
+  const isDriver = profile?.user_type === 'driver';
+  useEffect(() => {
+    if (!currentRide) return;
+
+    // Check if we already have the name from the join
+    const nameFromJoin = isDriver
+      ? currentRide.rider?.full_name
+      : currentRide.driver?.full_name;
+
+    if (nameFromJoin) {
+      setOtherPersonName(nameFromJoin);
+      return;
+    }
+
+    // Fallback: fetch the other person's profile directly
+    const otherId = isDriver ? currentRide.rider_id : currentRide.driver_id;
+    if (!otherId) return;
+
+    supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', otherId)
+      .single()
+      .then(({ data }) => {
+        if (data?.full_name) setOtherPersonName(data.full_name);
+      });
+  }, [currentRide, isDriver]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,13 +79,7 @@ export default function ChatPage() {
     }
   };
 
-  // Determine the other person's name
-  const isDriver = profile?.user_type === 'driver';
-  const otherName = currentRide
-    ? isDriver
-      ? (currentRide.rider?.full_name || 'Rider')
-      : (currentRide.driver?.full_name || 'Driver')
-    : 'Chat';
+  const otherName = otherPersonName || (isDriver ? 'Rider' : 'Driver');
 
   // Show loading while initializing
   if (initializing) {

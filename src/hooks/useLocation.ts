@@ -1,10 +1,17 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { GeoPosition } from '../types';
 
-export function useLocation() {
+export function useLocation(autoStart = true) {
   const [position, setPosition] = useState<GeoPosition | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [watching, setWatching] = useState(false);
+  const watchIdRef = useRef<number | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const getCurrentLocation = useCallback((): Promise<GeoPosition> => {
     return new Promise((resolve, reject) => {
@@ -22,12 +29,14 @@ export function useLocation() {
             heading: pos.coords.heading,
             speed: pos.coords.speed,
           };
-          setPosition(geo);
-          setError(null);
+          if (mountedRef.current) {
+            setPosition(geo);
+            setError(null);
+          }
           resolve(geo);
         },
         (err) => {
-          setError(err.message);
+          if (mountedRef.current) setError(err.message);
           reject(err);
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
@@ -41,25 +50,52 @@ export function useLocation() {
       return () => {};
     }
 
+    // Don't double-watch
+    if (watchIdRef.current !== null) {
+      return () => {
+        if (watchIdRef.current !== null) {
+          navigator.geolocation.clearWatch(watchIdRef.current);
+          watchIdRef.current = null;
+          if (mountedRef.current) setWatching(false);
+        }
+      };
+    }
+
     const id = navigator.geolocation.watchPosition(
       (pos) => {
-        setPosition({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          heading: pos.coords.heading,
-          speed: pos.coords.speed,
-        });
-        setError(null);
+        if (mountedRef.current) {
+          setPosition({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            heading: pos.coords.heading,
+            speed: pos.coords.speed,
+          });
+          setError(null);
+        }
       },
-      (err) => setError(err.message),
+      (err) => { if (mountedRef.current) setError(err.message); },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
     );
 
-    setWatching(true);
+    watchIdRef.current = id;
+    if (mountedRef.current) setWatching(true);
+
     return () => {
       navigator.geolocation.clearWatch(id);
-      setWatching(false);
+      watchIdRef.current = null;
+      if (mountedRef.current) setWatching(false);
     };
+  }, []);
+
+  // Auto-get current location on mount so riders see their position immediately
+  useEffect(() => {
+    if (autoStart && !position) {
+      getCurrentLocation().catch(() => {
+        // Silently fail — error state is already set
+      });
+    }
+    // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return { position, error, watching, getCurrentLocation, startWatching };

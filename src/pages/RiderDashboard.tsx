@@ -15,7 +15,7 @@ const MIN_RIDE_DISTANCE_KM = 0.1; // 100 meters minimum
 export default function RiderDashboard() {
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const { currentRide, initializing, requestRide, cancelRide } = useRide();
+  const { currentRide, driverLocation, initializing, requestRide, cancelRide, loading: rideLoading } = useRide();
   const { position, error: locationError } = useGeoLocation();
   const [pickup, setPickup] = useState<LocationCoords | null>(null);
   const [destination, setDestination] = useState<LocationCoords | null>(null);
@@ -24,6 +24,7 @@ export default function RiderDashboard() {
   const [route, setRoute] = useState<RouteResult | null>(null);
   const [selectingFor, setSelectingFor] = useState<'pickup' | 'destination' | null>(null);
   const [loading, setLoading] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
 
   // Set pickup to current location
@@ -103,6 +104,8 @@ export default function RiderDashboard() {
 
   const handleCancelRide = async () => {
     if (!currentRide) return;
+    setCancelling(true);
+    setError('');
     try {
       await cancelRide(currentRide.id);
       setPickup(null);
@@ -113,6 +116,8 @@ export default function RiderDashboard() {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to cancel ride';
       setError(message);
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -125,18 +130,34 @@ export default function RiderDashboard() {
     );
   }
 
-  // Active ride banner (instead of auto-redirect)
-  const hasActiveRide = currentRide && (currentRide.status === 'accepted' || currentRide.status === 'in_progress');
+  // Ride states
+  const isRequested = currentRide?.status === 'requested';
+  const isAccepted = currentRide?.status === 'accepted';
+  const isInProgress = currentRide?.status === 'in_progress';
+  const hasActiveRide = isAccepted || isInProgress;
+
+  // Driver info when ride is accepted
+  const driverName = currentRide?.driver?.full_name;
+  const driverRating = currentRide?.driver?.rating;
+  const vehicleInfo = currentRide?.driver
+    ? [currentRide.driver.vehicle_color, currentRide.driver.vehicle_make, currentRide.driver.vehicle_model].filter(Boolean).join(' ')
+    : null;
+  const licensePlate = currentRide?.driver?.license_plate;
+
+  // Driver position for map
+  const driverPos = driverLocation ? { lat: driverLocation.lat, lng: driverLocation.lng } : undefined;
 
   return (
     <div className="flex flex-col h-full">
-      {/* Active ride banner */}
+      {/* Active ride banner — only for accepted/in_progress */}
       {hasActiveRide && (
         <button
           onClick={() => navigate('/ride/active')}
           className="w-full px-4 py-3 bg-primary-600 text-white text-sm font-semibold flex items-center justify-between z-10"
         >
-          <span>You have an active ride - tap to view</span>
+          <span>
+            {isAccepted ? 'Driver is on the way - tap to view' : 'Ride in progress - tap to view'}
+          </span>
           <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="9 18 15 12 9 6" />
           </svg>
@@ -149,11 +170,11 @@ export default function RiderDashboard() {
           Hi, {profile?.full_name?.split(' ')[0] || 'Rider'}
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Where are you going today?
+          {isRequested ? 'Finding you a driver...' : hasActiveRide ? 'You have an active ride' : 'Where are you going today?'}
         </p>
       </div>
 
-      {/* Address search inputs */}
+      {/* Address search inputs — only when no ride */}
       {!currentRide && (
         <div className="px-4 py-2 bg-white dark:bg-gray-900 space-y-2 z-10">
           <AddressSearch
@@ -176,8 +197,9 @@ export default function RiderDashboard() {
         <MapView
           center={position ? [position.lat, position.lng] : undefined}
           userPosition={position ? { lat: position.lat, lng: position.lng } : undefined}
-          pickupPosition={pickup || undefined}
-          destinationPosition={destination || undefined}
+          pickupPosition={pickup || (currentRide ? { lat: Number(currentRide.pickup_lat), lng: Number(currentRide.pickup_lng) } : undefined)}
+          destinationPosition={destination || (currentRide ? { lat: Number(currentRide.destination_lat), lng: Number(currentRide.destination_lng) } : undefined)}
+          driverPosition={driverPos}
           routeCoords={route?.coordinates}
           onMapClick={selectingFor ? handleMapClick : undefined}
           className="h-full w-full"
@@ -213,14 +235,14 @@ export default function RiderDashboard() {
           </div>
         )}
 
-        {currentRide && currentRide.status === 'requested' ? (
+        {isRequested ? (
           /* Waiting for driver */
           <div className="space-y-3">
             <div className="flex items-center gap-3 bg-primary-50 dark:bg-primary-900/20 rounded-xl p-4">
               <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/40 rounded-full flex items-center justify-center">
                 <div className="w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
               </div>
-              <div>
+              <div className="flex-1">
                 <p className="font-semibold text-gray-900 dark:text-white">
                   Looking for a driver...
                 </p>
@@ -231,12 +253,57 @@ export default function RiderDashboard() {
             </div>
             <button
               onClick={handleCancelRide}
-              className="w-full py-3 rounded-xl border-2 border-red-500 text-red-500 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              disabled={cancelling}
+              className="w-full py-3 rounded-xl border-2 border-red-500 text-red-500 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
             >
-              Cancel Request
+              {cancelling ? 'Cancelling...' : 'Cancel Request'}
             </button>
           </div>
-        ) : !hasActiveRide ? (
+        ) : hasActiveRide ? (
+          /* Active ride info */
+          <div className="space-y-3">
+            {/* Driver info card */}
+            {(driverName || vehicleInfo) && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/40 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold">
+                    {driverName ? driverName.charAt(0).toUpperCase() : 'D'}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-900 dark:text-white">
+                      {driverName || 'Your Driver'}
+                    </p>
+                    {vehicleInfo && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {vehicleInfo}{licensePlate ? ` (${licensePlate})` : ''}
+                      </p>
+                    )}
+                    {driverRating != null && Number(driverRating) > 0 && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        Rating: {Number(driverRating).toFixed(1)}/5
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => navigate('/ride/active')}
+                className="flex-1 bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 rounded-xl transition-colors"
+              >
+                View Ride
+              </button>
+              <button
+                onClick={() => navigate('/ride/chat')}
+                className="px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                Chat
+              </button>
+            </div>
+          </div>
+        ) : (
           /* Ride request form */
           <>
             <RideRequestForm
@@ -249,13 +316,13 @@ export default function RiderDashboard() {
               onSelectPickup={() => setSelectingFor('pickup')}
               onSelectDestination={() => setSelectingFor('destination')}
               onRequestRide={handleRequestRide}
-              loading={loading}
+              loading={loading || rideLoading}
             />
             <p className="text-center text-xs text-gray-400 dark:text-gray-600">
               Or tap the map to set locations
             </p>
           </>
-        ) : null}
+        )}
       </div>
     </div>
   );
