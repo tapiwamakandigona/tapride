@@ -86,7 +86,8 @@ export function useRide() {
     const fareEstimate = calculateFare(distanceKm);
 
     try {
-      const { data, error } = await supabase
+      // Insert ONCE, then try to select with profile join
+      const { data: inserted, error: insertErr } = await supabase
         .from('rides')
         .insert({
           rider_id: user.id,
@@ -100,35 +101,22 @@ export function useRide() {
           fare_estimate: fareEstimate,
           distance_km: Math.round(distanceKm * 10) / 10,
         })
-        .select(RIDE_SELECT)
+        .select('*')
         .single();
 
-      if (error) {
-        // Fallback without join
-        const { data: fallback, error: fallbackErr } = await supabase
-          .from('rides')
-          .insert({
-            rider_id: user.id,
-            pickup_lat: pickupLat,
-            pickup_lng: pickupLng,
-            pickup_address: pickupAddress,
-            destination_lat: destLat,
-            destination_lng: destLng,
-            destination_address: destAddress,
-            status: 'requested' as RideStatus,
-            fare_estimate: fareEstimate,
-            distance_km: Math.round(distanceKm * 10) / 10,
-          })
-          .select('*')
-          .single();
+      if (insertErr) throw new Error(insertErr.message);
+      if (!inserted) throw new Error('Failed to create ride');
 
-        if (fallbackErr) throw new Error(fallbackErr.message);
-        if (fallback && mountedRef.current) setCurrentRide(fallback);
-        return fallback;
-      }
+      // Now try to re-fetch with profile join for richer data
+      const { data: withProfiles } = await supabase
+        .from('rides')
+        .select(RIDE_SELECT)
+        .eq('id', inserted.id)
+        .single();
 
-      if (data && mountedRef.current) setCurrentRide(data);
-      return data;
+      const ride = (withProfiles || inserted) as Ride;
+      if (mountedRef.current) setCurrentRide(ride);
+      return ride;
     } finally {
       if (mountedRef.current) setLoading(false);
     }
@@ -140,7 +128,8 @@ export function useRide() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase
+      // Update ONCE with the status guard, plain select
+      const { data: updated, error: updateErr } = await supabase
         .from('rides')
         .update({
           driver_id: user.id,
@@ -149,35 +138,26 @@ export function useRide() {
         })
         .eq('id', rideId)
         .eq('status', 'requested')
-        .select(RIDE_SELECT)
+        .select('*')
         .single();
 
-      if (error) {
-        if (error.code === 'PGRST116') {
+      if (updateErr) {
+        if (updateErr.code === 'PGRST116') {
           throw new Error('This ride was already accepted by another driver');
         }
-        // Fallback: try without join
-        const { data: fallback, error: fallbackErr } = await supabase
-          .from('rides')
-          .update({
-            driver_id: user.id,
-            status: 'accepted' as RideStatus,
-            accepted_at: new Date().toISOString(),
-          })
-          .eq('id', rideId)
-          .select('*')
-          .single();
-
-        if (fallbackErr) {
-          if (fallbackErr.code === 'PGRST116') {
-            throw new Error('This ride was already accepted by another driver');
-          }
-          throw new Error(fallbackErr.message);
-        }
-        if (fallback && mountedRef.current) setCurrentRide(fallback);
-        return;
+        throw new Error(updateErr.message);
       }
-      if (data && mountedRef.current) setCurrentRide(data);
+      if (!updated) throw new Error('This ride was already accepted by another driver');
+
+      // Re-fetch with profile join for richer data
+      const { data: withProfiles } = await supabase
+        .from('rides')
+        .select(RIDE_SELECT)
+        .eq('id', rideId)
+        .single();
+
+      const ride = (withProfiles || updated) as Ride;
+      if (mountedRef.current) setCurrentRide(ride);
     } finally {
       if (mountedRef.current) setLoading(false);
     }

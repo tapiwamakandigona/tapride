@@ -59,6 +59,7 @@ export default function DriverDashboard() {
   const [toggleLoading, setToggleLoading] = useState(false);
   const [error, setError] = useState('');
   const prevRequestCount = useRef(0);
+  const loadingRequestsRef = useRef(false);
 
   // Start watching location when online
   useEffect(() => {
@@ -84,45 +85,47 @@ export default function DriverDashboard() {
     }
 
     const loadRequests = async () => {
+      // Debounce guard — skip if already loading
+      if (loadingRequestsRef.current) return;
+      loadingRequestsRef.current = true;
       try {
         const requests = await fetchNearbyRequests();
-        setNearbyRequests((prev) => {
-          // Notify if there are new requests
-          if (requests.length > prev.length && prev.length > 0) {
-            playNewRequestSound();
-            vibrateDevice();
-          } else if (requests.length > 0 && prevRequestCount.current === 0) {
-            // First load with requests
-            playNewRequestSound();
-            vibrateDevice();
-          }
-          prevRequestCount.current = requests.length;
-          return requests;
-        });
+        const prevCount = prevRequestCount.current;
+
+        // Play sound/vibrate OUTSIDE setState
+        if (requests.length > 0 && prevCount === 0) {
+          playNewRequestSound();
+          vibrateDevice();
+        } else if (requests.length > prevCount && prevCount > 0) {
+          playNewRequestSound();
+          vibrateDevice();
+        }
+
+        prevRequestCount.current = requests.length;
+        setNearbyRequests(requests);
       } catch {
         // Silently fail, will retry
+      } finally {
+        loadingRequestsRef.current = false;
       }
     };
 
     loadRequests();
-    const interval = setInterval(loadRequests, 8000); // Poll every 8s (slightly faster)
+    const interval = setInterval(loadRequests, 8000);
 
-    // Also subscribe to new ride requests in realtime
+    // Subscribe to new ride requests in realtime
     const channel = supabase
       .channel('new-ride-requests')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'rides', filter: 'status=eq.requested' },
         () => {
-          // New ride inserted — play sound and reload
-          playNewRequestSound();
-          vibrateDevice();
           loadRequests();
         }
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'rides' },
+        { event: 'UPDATE', schema: 'public', table: 'rides', filter: 'status=eq.requested' },
         () => { loadRequests(); }
       )
       .subscribe();
