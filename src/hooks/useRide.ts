@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import type { Ride, RideStatus, DriverLocation } from '../types';
 import { haversineDistance } from '../lib/geo';
 import { calculateFare } from '../lib/fare';
+import type { RideType } from '../lib/fare';
+import { distanceToPickup } from '../lib/matching';
 
 // Select with joined rider/driver profiles
 const RIDE_SELECT = '*, rider:profiles!rides_rider_id_fkey(*), driver:profiles!rides_driver_id_fkey(*)';
@@ -77,13 +79,16 @@ export function useRide() {
     destLat: number,
     destLng: number,
     destAddress: string,
-    routeDistanceKm?: number
+    routeDistanceKm?: number,
+    routeDurationMin?: number,
+    rideType: RideType = 'economy',
   ) => {
     if (!user) throw new Error('Not authenticated');
     setLoading(true);
 
     const distanceKm = routeDistanceKm ?? haversineDistance(pickupLat, pickupLng, destLat, destLng);
-    const fareEstimate = calculateFare(distanceKm);
+    const durationMin = routeDurationMin ?? distanceKm * 2; // rough estimate if no OSRM
+    const fareEstimate = calculateFare(distanceKm, durationMin, rideType);
 
     try {
       // Insert ONCE, then try to select with profile join
@@ -100,6 +105,7 @@ export function useRide() {
           status: 'requested' as RideStatus,
           fare_estimate: fareEstimate,
           distance_km: Math.round(distanceKm * 10) / 10,
+          ride_type: rideType,
         })
         .select('*')
         .single();
@@ -190,15 +196,54 @@ export function useRide() {
     return completedRide;
   };
 
-  // Cancel ride
+  // Cancel ride — with fee logic
   const cancelRide = async (rideId: string) => {
+    if (!user) throw new Error('Not authenticated');
+
+    // Check if cancellation fee applies
+    let fee = 0;
+    if (currentRide) {
+      const createdAt = new Date(currentRide.created_at).getTime();
+      const now = Date.now();
+      const twoMinMs = 2 * 60 * 1000;
+      const isAccepted = currentRide.status === 'accepted' || currentRide.status === 'in_progress';
+
+      if (now - createdAt > twoMinMs || isAccepted) {
+        fee = 1.0; // $1 cancellation fee
+      }
+    }
+
     const { error } = await supabase
       .from('rides')
       .update({ status: 'cancelled' as RideStatus })
       .eq('id', rideId);
     if (error) throw new Error(error.message);
+
+    // Apply fee and increment cancellation count
+    if (fee > 0 && profile) {
+      await supabase
+        .from('profiles')
+        .update({
+          cancellation_count: (profile.cancellation_count ?? 0) + 1,
+          cancellation_fee_balance: (profile.cancellation_fee_balance ?? 0) + fee,
+        })
+        .eq('id', user.id);
+    }
+
     if (mountedRef.current) setCurrentRide(null);
+    return { fee };
   };
+
+  // Check if user has excessive cancellations in last 24h
+  const checkCancellationWarning = useCallback(async (): Promise<boolean> => {
+    if (!user) return false;
+    const { data } = await supabase
+      .from('profiles')
+      .select('cancellation_count')
+      .eq('id', user.id)
+      .single();
+    return (data?.cancellation_count ?? 0) >= 5;
+  }, [user]);
 
   // Clear current ride from state
   const clearCurrentRide = () => {
@@ -269,8 +314,8 @@ export function useRide() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Fetch nearby ride requests (driver) — joins rider profile
-  const fetchNearbyRequests = useCallback(async (): Promise<Ride[]> => {
+  // Fetch nearby ride requests (driver) — joins rider profile, adds distance
+  const fetchNearbyRequests = useCallback(async (driverLat?: number, driverLng?: number): Promise<Ride[]> => {
     const { data, error } = await supabase
       .from('rides')
       .select(RIDE_SELECT)
@@ -293,6 +338,8 @@ export function useRide() {
 
     return (data as Ride[]) || [];
   }, []);
+
+  // No changes needed below — distance is computed in RideRequestCard via props
 
   // Auto-subscribe to ride updates when there's an active ride
   useEffect(() => {
@@ -329,5 +376,6 @@ export function useRide() {
     fetchActiveRide,
     subscribeToRide,
     subscribeToDriverLocation,
+    checkCancellationWarning,
   };
 }

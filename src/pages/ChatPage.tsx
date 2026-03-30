@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../hooks/useChat';
 import { useRide } from '../hooks/useRide';
 import { supabase } from '../lib/supabase';
 import ChatBubble from '../components/Chat/ChatBubble';
+import TypingIndicator from '../components/Chat/TypingIndicator';
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -15,7 +16,9 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
   const [otherPersonName, setOtherPersonName] = useState<string | null>(null);
+  const [otherTyping, setOtherTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -58,6 +61,51 @@ export default function ChatPage() {
       });
   }, [currentRide, isDriver]);
 
+  // Typing presence channel
+  useEffect(() => {
+    if (!currentRide?.id || !user?.id) return;
+
+    const channel = supabase.channel(`chat-typing-${currentRide.id}`, {
+      config: { presence: { key: user.id } },
+    });
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const otherIsTyping = Object.entries(state).some(
+          ([key, values]) => key !== user.id && (values as any[]).some((v: any) => v.typing)
+        );
+        setOtherTyping(otherIsTyping);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentRide?.id, user?.id]);
+
+  // Broadcast typing state
+  const broadcastTyping = useCallback(
+    (isTyping: boolean) => {
+      if (!currentRide?.id || !user?.id) return;
+      const channel = supabase.channel(`chat-typing-${currentRide.id}`);
+      channel.track({ typing: isTyping });
+    },
+    [currentRide?.id, user?.id]
+  );
+
+  const handleInputChange = (value: string) => {
+    setInput(value);
+    if (value.trim()) {
+      broadcastTyping(true);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => broadcastTyping(false), 2000);
+    } else {
+      broadcastTyping(false);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    }
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = input.trim();
@@ -71,6 +119,7 @@ export default function ChatPage() {
         setSendError('Failed to send message');
       } else {
         setInput('');
+        broadcastTyping(false);
       }
     } catch {
       setSendError('Failed to send message');
@@ -142,6 +191,13 @@ export default function ChatPage() {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Typing indicator */}
+      {otherTyping && (
+        <div className="px-4">
+          <TypingIndicator name={otherName} />
+        </div>
+      )}
+
       {/* Send error */}
       {sendError && (
         <div className="px-4 py-1">
@@ -157,7 +213,7 @@ export default function ChatPage() {
         <input
           type="text"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => handleInputChange(e.target.value)}
           placeholder="Type a message..."
           maxLength={500}
           className="flex-1 px-4 py-2.5 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"

@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import VerificationBadge from '../components/Driver/VerificationBadge';
+import type { VerificationStatus } from '../types';
 
 export default function Profile() {
+  const navigate = useNavigate();
   const { profile, updateProfile, signOut } = useAuth();
   const [editing, setEditing] = useState(false);
   const [fullName, setFullName] = useState(profile?.full_name || '');
@@ -111,6 +115,11 @@ export default function Profile() {
               }`}>
                 {isDriver ? 'Driver' : 'Rider'}
               </span>
+              {isDriver && (
+                <div className="mt-1">
+                  <VerificationBadge status={(profile?.verification_status as VerificationStatus) || 'unverified'} />
+                </div>
+              )}
             </div>
             {profile?.rating != null && Number(profile.rating) > 0 && (
               <div className="flex items-center gap-1 flex-shrink-0">
@@ -268,6 +277,14 @@ export default function Profile() {
 
           {/* Action buttons */}
           <div className="mt-6 space-y-3">
+            {isDriver && (!profile?.verification_status || profile.verification_status === 'unverified' || profile.verification_status === 'rejected') && (
+              <button
+                onClick={() => navigate('/driver/verify')}
+                className="w-full py-3 rounded-xl bg-yellow-500 hover:bg-yellow-600 text-white font-semibold transition-colors"
+              >
+                {profile?.verification_status === 'rejected' ? 'Re-submit Verification' : 'Complete Verification'}
+              </button>
+            )}
             {editing ? (
               <div className="flex gap-3">
                 <button

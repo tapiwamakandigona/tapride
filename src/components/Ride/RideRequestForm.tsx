@@ -1,5 +1,5 @@
 import type { LocationCoords } from '../../types';
-import { calculateFare, formatFare } from '../../lib/fare';
+import { calculateFare, formatFare, getTimeMultiplier, type RideType } from '../../lib/fare';
 
 interface RideRequestFormProps {
   pickup: LocationCoords | null;
@@ -8,6 +8,7 @@ interface RideRequestFormProps {
   destAddress?: string;
   distanceKm?: number;
   durationMin?: number;
+  rideType?: RideType;
   onSelectPickup: () => void;
   onSelectDestination: () => void;
   onRequestRide: () => void;
@@ -21,14 +22,18 @@ export default function RideRequestForm({
   destAddress,
   distanceKm,
   durationMin,
+  rideType = 'economy',
   onSelectPickup,
   onSelectDestination,
   onRequestRide,
   loading,
 }: RideRequestFormProps) {
   const distance = distanceKm ?? 0;
-  const fare = distance > 0 ? calculateFare(distance) : 0;
+  const duration = durationMin ?? 0;
+  const fare = distance > 0 ? calculateFare(distance, duration, rideType) : 0;
   const eta = durationMin ? Math.ceil(durationMin) : null;
+  const timeMultiplier = getTimeMultiplier();
+  const isTimeSurge = timeMultiplier > 1.0;
 
   return (
     <div className="space-y-3">
@@ -79,6 +84,17 @@ export default function RideRequestForm({
       {/* Fare estimate */}
       {distance > 0 && (
         <div className="bg-primary-50 dark:bg-primary-900/20 rounded-xl p-3">
+          {isTimeSurge && (
+            <div className="flex items-center gap-2 mb-2 px-2 py-1.5 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+              <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                {timeMultiplier === 1.5 ? 'Peak hours' : 'Late night'} — {timeMultiplier}× rate
+              </span>
+            </div>
+          )}
           <div className="flex justify-between text-sm">
             <span className="text-gray-600 dark:text-gray-400">Distance</span>
             <span className="font-medium text-gray-900 dark:text-white">{distance.toFixed(1)} km</span>

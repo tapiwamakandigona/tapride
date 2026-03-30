@@ -166,6 +166,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       'full_name', 'phone', 'avatar_url', 'user_type',
       'vehicle_make', 'vehicle_model', 'vehicle_color', 'license_plate',
       'is_online', 'current_lat', 'current_lng',
+      'emergency_contact_name', 'emergency_contact_phone',
+      'drivers_license_url', 'vehicle_registration_url', 'profile_photo_url',
+      'verification_status',
     ];
     const sanitized: Record<string, unknown> = { id: user.id };
     for (const key of allowedFields) {

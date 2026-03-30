@@ -5,6 +5,7 @@ import { useRide } from '../hooks/useRide';
 import { useLocation as useGeoLocation } from '../hooks/useLocation';
 import { getRoute, type RouteResult } from '../lib/geo';
 import MapView from '../components/Map/MapView';
+import SOSButton from '../components/Safety/SOSButton';
 import { formatFare } from '../lib/fare';
 
 export default function ActiveRide() {
@@ -23,6 +24,7 @@ export default function ActiveRide() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [route, setRoute] = useState<RouteResult | null>(null);
+  const [etaSeconds, setEtaSeconds] = useState<number | null>(null);
 
   const isDriver = profile?.user_type === 'driver';
 
@@ -53,6 +55,23 @@ export default function ActiveRide() {
     });
     return () => { cancelled = true; };
   }, [currentRide?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ETA countdown timer
+  useEffect(() => {
+    if (currentRide?.status !== 'in_progress' || !route?.durationMin) {
+      setEtaSeconds(null);
+      return;
+    }
+    // Initialize ETA based on route duration
+    setEtaSeconds(Math.ceil(route.durationMin * 60));
+    const interval = setInterval(() => {
+      setEtaSeconds((prev) => {
+        if (prev === null || prev <= 0) return 0;
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [currentRide?.status, route?.durationMin]);
 
   // Driver: track own location
   useEffect(() => {
@@ -160,6 +179,11 @@ export default function ActiveRide() {
             <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${statusColor[currentRide.status] || ''}`}>
               {statusLabel[currentRide.status] || currentRide.status}
             </span>
+            {currentRide.status === 'in_progress' && etaSeconds !== null && etaSeconds > 0 && (
+              <span className="ml-2 px-3 py-1 rounded-full text-xs font-bold bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400">
+                Arriving in {Math.ceil(etaSeconds / 60)} min
+              </span>
+            )}
           </div>
           <button
             onClick={() => navigate('/ride/chat')}
@@ -185,6 +209,9 @@ export default function ActiveRide() {
           className="h-full w-full"
         />
       </div>
+
+      {/* SOS Button */}
+      <SOSButton ride={currentRide} />
 
       {/* Bottom Panel */}
       <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-4 py-4">

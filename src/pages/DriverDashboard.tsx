@@ -5,8 +5,10 @@ import { useRide } from '../hooks/useRide';
 import { useLocation as useGeoLocation } from '../hooks/useLocation';
 import MapView from '../components/Map/MapView';
 import RideRequestCard from '../components/Ride/RideRequestCard';
+import BidResponseCard from '../components/Ride/BidResponseCard';
 import { supabase } from '../lib/supabase';
-import type { Ride } from '../types';
+import type { Ride, VerificationStatus } from '../types';
+import VerificationBadge from '../components/Driver/VerificationBadge';
 
 // Play a beep sound using Web Audio API (no external files needed)
 function playNewRequestSound() {
@@ -58,6 +60,7 @@ export default function DriverDashboard() {
   const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
   const [toggleLoading, setToggleLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showVerificationPrompt, setShowVerificationPrompt] = useState(false);
   const prevRequestCount = useRef(0);
   const loadingRequestsRef = useRef(false);
 
@@ -138,6 +141,12 @@ export default function DriverDashboard() {
 
   const handleToggleOnline = useCallback(async () => {
     if (!profile?.id) return;
+    // Check verification before going online
+    const verificationStatus = (profile as unknown as Record<string, unknown>).verification_status as string;
+    if (!isOnline && verificationStatus !== 'verified') {
+      setShowVerificationPrompt(true);
+      return;
+    }
     setToggleLoading(true);
     try {
       const newStatus = !isOnline;
@@ -292,15 +301,56 @@ export default function DriverDashboard() {
                 New Ride Requests
               </p>
               {nearbyRequests.map((ride) => (
-                <RideRequestCard
-                  key={ride.id}
-                  ride={ride}
-                  onAccept={() => handleAcceptRide(ride.id)}
-                  loading={acceptingRideId === ride.id}
-                />
+                <div key={ride.id} className="space-y-2">
+                  <RideRequestCard
+                    ride={ride}
+                    onAccept={() => handleAcceptRide(ride.id)}
+                    loading={acceptingRideId === ride.id}
+                    driverLat={position?.lat}
+                    driverLng={position?.lng}
+                  />
+                  <BidResponseCard
+                    rideId={ride.id}
+                    fareEstimate={Number(ride.fare_estimate) || 0}
+                  />
+                </div>
               ))}
             </div>
           )}
+        </div>
+      )}
+      {/* Verification prompt modal */}
+      {showVerificationPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-xl">
+            <div className="w-16 h-16 bg-yellow-100 dark:bg-yellow-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-yellow-600 dark:text-yellow-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white text-center mb-2">
+              Verification Required
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-4">
+              You need to complete driver verification before going online.
+            </p>
+            <div className="space-y-2">
+              <button
+                onClick={() => { setShowVerificationPrompt(false); navigate('/driver/verify'); }}
+                className="w-full py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-semibold transition-colors"
+              >
+                Start Verification
+              </button>
+              <button
+                onClick={() => setShowVerificationPrompt(false)}
+                className="w-full py-3 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                Later
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

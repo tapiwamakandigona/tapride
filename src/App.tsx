@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import ErrorBoundary from './components/ErrorBoundary';
+import NetworkBanner from './components/Layout/NetworkBanner';
 import AppLayout from './components/Layout/AppLayout';
 import Splash from './pages/Splash';
 import Login from './pages/Login';
@@ -12,6 +13,10 @@ import ChatPage from './pages/ChatPage';
 import RateRide from './pages/RateRide';
 import RideHistory from './pages/RideHistory';
 import Profile from './pages/Profile';
+import RideReceipt from './pages/RideReceipt';
+import DriverVerification from './pages/DriverVerification';
+import ScheduledRides from './pages/ScheduledRides';
+import ForgotPassword from './pages/ForgotPassword';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -57,6 +62,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white">
+        <NetworkBanner />
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<Splash />} />
@@ -76,6 +82,14 @@ export default function App() {
               </GuestRoute>
             }
           />
+          <Route
+            path="/forgot-password"
+            element={
+              <GuestRoute>
+                <ForgotPassword />
+              </GuestRoute>
+            }
+          />
 
           {/* Protected routes with bottom navbar */}
           <Route
@@ -88,6 +102,7 @@ export default function App() {
             <Route path="/rider" element={<RiderDashboard />} />
             <Route path="/driver" element={<DriverDashboard />} />
             <Route path="/history" element={<RideHistory />} />
+            <Route path="/scheduled" element={<ScheduledRides />} />
             <Route path="/profile" element={<Profile />} />
           </Route>
 
@@ -116,7 +131,22 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
+          <Route
+            path="/ride/receipt"
+            element={
+              <ProtectedRoute>
+                <RideReceipt />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/driver/verify"
+            element={
+              <ProtectedRoute>
+                <DriverVerification />
+              </ProtectedRoute>
+            }
+          />
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

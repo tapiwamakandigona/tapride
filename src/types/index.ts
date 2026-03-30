@@ -2,6 +2,8 @@ export type UserType = 'rider' | 'driver';
 
 export type RideStatus = 'requested' | 'accepted' | 'in_progress' | 'completed' | 'cancelled';
 
+export type VerificationStatus = 'unverified' | 'pending' | 'verified' | 'rejected';
+
 export interface Profile {
   id: string;
   email?: string;
@@ -18,6 +20,14 @@ export interface Profile {
   is_online: boolean;
   current_lat: number | null;
   current_lng: number | null;
+  cancellation_count: number;
+  cancellation_fee_balance: number;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  drivers_license_url: string | null;
+  vehicle_registration_url: string | null;
+  profile_photo_url: string | null;
+  verification_status: VerificationStatus;
   created_at: string;
 }
 
@@ -35,6 +45,9 @@ export interface Ride {
   fare_estimate: number;
   fare_final: number | null;
   distance_km: number;
+  ride_type: string;
+  promo_code: string | null;
+  scheduled_for: string | null;
   created_at: string;
   accepted_at: string | null;
   started_at: string | null;

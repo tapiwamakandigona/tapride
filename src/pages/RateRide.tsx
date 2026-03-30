@@ -81,9 +81,9 @@ export default function RateRide() {
 
       setSubmitted(true);
 
-      // Navigate after a short delay
+      // Navigate to receipt after a short delay
       setTimeout(() => {
-        navigate(homePath, { replace: true });
+        navigate('/ride/receipt', { replace: true, state: { ride } });
       }, 1500);
     } catch {
       // Still navigate on error

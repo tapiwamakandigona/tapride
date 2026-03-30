@@ -8,14 +8,21 @@ import { haversineDistance } from '../lib/geo';
 import MapView from '../components/Map/MapView';
 import AddressSearch from '../components/Map/AddressSearch';
 import RideRequestForm from '../components/Ride/RideRequestForm';
+import RideTypeSelector from '../components/Ride/RideTypeSelector';
+import FareBidding from '../components/Ride/FareBidding';
+import PromoCodeInput from '../components/Ride/PromoCodeInput';
+import ScheduleRidePicker from '../components/Ride/ScheduleRidePicker';
 import type { LocationCoords } from '../types';
+import { calculateFare, type RideType } from '../lib/fare';
+
+import { supabase } from '../lib/supabase';
 
 const MIN_RIDE_DISTANCE_KM = 0.1; // 100 meters minimum
 
 export default function RiderDashboard() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
-  const { currentRide, driverLocation, initializing, requestRide, cancelRide, loading: rideLoading } = useRide();
+  const { user, profile } = useAuth();
+  const { currentRide, driverLocation, initializing, requestRide, cancelRide, checkCancellationWarning, loading: rideLoading } = useRide();
   const { position, error: locationError } = useGeoLocation();
   const [pickup, setPickup] = useState<LocationCoords | null>(null);
   const [destination, setDestination] = useState<LocationCoords | null>(null);
@@ -26,6 +33,11 @@ export default function RiderDashboard() {
   const [loading, setLoading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
+  const [rideType, setRideType] = useState<RideType>('economy');
+  const [showCancelWarning, setShowCancelWarning] = useState(false);
+  const [cancelFeeApplies, setCancelFeeApplies] = useState(false);
+  const [excessiveCancellations, setExcessiveCancellations] = useState(false);
 
   // Set pickup to current location
   useEffect(() => {
@@ -47,6 +59,30 @@ export default function RiderDashboard() {
     });
     return () => { cancelled = true; };
   }, [pickup, destination]);
+
+  // Check if cancel fee applies
+  useEffect(() => {
+    if (!currentRide) {
+      setCancelFeeApplies(false);
+      return;
+    }
+    const createdAt = new Date(currentRide.created_at).getTime();
+    const isAccepted = currentRide.status === 'accepted' || currentRide.status === 'in_progress';
+    const pastTwoMin = Date.now() - createdAt > 2 * 60 * 1000;
+    setCancelFeeApplies(pastTwoMin || isAccepted);
+
+    // Update every 30s to catch the 2min threshold
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setCancelFeeApplies(now - createdAt > 2 * 60 * 1000 || isAccepted);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [currentRide]);
+
+  // Check excessive cancellations
+  useEffect(() => {
+    checkCancellationWarning().then(setExcessiveCancellations);
+  }, [checkCancellationWarning]);
 
   const handleMapClick = useCallback(async (lat: number, lng: number) => {
     if (selectingFor === 'pickup') {
@@ -78,7 +114,6 @@ export default function RiderDashboard() {
       return;
     }
 
-    // Validate minimum distance
     const dist = route?.distanceKm ?? haversineDistance(pickup.lat, pickup.lng, destination.lat, destination.lng);
     if (dist < MIN_RIDE_DISTANCE_KM) {
       setError('Pickup and destination are too close. Please choose locations at least 100m apart.');
@@ -92,7 +127,9 @@ export default function RiderDashboard() {
       await requestRide(
         pickup.lat, pickup.lng, pickupAddress || 'Pickup location',
         destination.lat, destination.lng, destAddress || 'Destination',
-        route?.distanceKm
+        route?.distanceKm,
+        route?.durationMin,
+        rideType,
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to request ride';
@@ -102,12 +139,64 @@ export default function RiderDashboard() {
     }
   };
 
+  const handleScheduleRide = async (scheduledDate: Date) => {
+    if (!pickup || !destination || !user) {
+      setError('Please set both pickup and destination');
+      setShowSchedulePicker(false);
+      return;
+    }
+    setShowSchedulePicker(false);
+    setLoading(true);
+    setError('');
+    try {
+      const dist = route?.distanceKm ?? haversineDistance(pickup.lat, pickup.lng, destination.lat, destination.lng);
+      const fareEstimate = calculateFare(dist, route?.durationMin ?? 0, rideType);
+      const { error: insertError } = await supabase
+        .from('rides')
+        .insert({
+          rider_id: user.id,
+          pickup_lat: pickup.lat,
+          pickup_lng: pickup.lng,
+          pickup_address: pickupAddress || 'Pickup location',
+          destination_lat: destination.lat,
+          destination_lng: destination.lng,
+          destination_address: destAddress || 'Destination',
+          status: 'requested',
+          fare_estimate: fareEstimate,
+          distance_km: Math.round(dist * 10) / 10,
+          ride_type: rideType,
+          scheduled_for: scheduledDate.toISOString(),
+        });
+      if (insertError) throw new Error(insertError.message);
+      setPickup(null);
+      setDestination(null);
+      setPickupAddress('');
+      setDestAddress('');
+      setRoute(null);
+      setError('');
+      // Show success briefly
+      navigate('/rides/scheduled');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to schedule ride');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCancelRide = async () => {
     if (!currentRide) return;
+    if (cancelFeeApplies && !showCancelWarning) {
+      setShowCancelWarning(true);
+      return;
+    }
+    setShowCancelWarning(false);
     setCancelling(true);
     setError('');
     try {
-      await cancelRide(currentRide.id);
+      const result = await cancelRide(currentRide.id);
+      if (result.fee > 0) {
+        setError(`A $${result.fee.toFixed(2)} cancellation fee has been applied.`);
+      }
       setPickup(null);
       setDestination(null);
       setPickupAddress('');
@@ -149,6 +238,13 @@ export default function RiderDashboard() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Excessive cancellation warning */}
+      {excessiveCancellations && (
+        <div className="px-4 py-2 bg-red-500 text-white text-sm font-medium text-center">
+          ⚠️ You have 5+ recent cancellations. Continued cancellations may affect your account.
+        </div>
+      )}
+
       {/* Active ride banner — only for accepted/in_progress */}
       {hasActiveRide && (
         <button
@@ -248,16 +344,46 @@ export default function RiderDashboard() {
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Estimated fare: ${Number(currentRide.fare_estimate || 0).toFixed(2)}
+                  {currentRide.ride_type && currentRide.ride_type !== 'economy' && (
+                    <span className="ml-1 capitalize">({currentRide.ride_type})</span>
+                  )}
                 </p>
               </div>
             </div>
-            <button
-              onClick={handleCancelRide}
-              disabled={cancelling}
-              className="w-full py-3 rounded-xl border-2 border-red-500 text-red-500 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
-            >
-              {cancelling ? 'Cancelling...' : 'Cancel Request'}
-            </button>
+
+            {/* Fare bidding for requested rides */}
+            <FareBidding rideId={currentRide.id} fareEstimate={Number(currentRide.fare_estimate) || 0} />
+
+            {showCancelWarning ? (
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-3">
+                <p className="text-sm text-yellow-700 dark:text-yellow-400 font-medium">
+                  ⚠️ A $1.00 cancellation fee will apply. Continue?
+                </p>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={handleCancelRide}
+                    disabled={cancelling}
+                    className="flex-1 py-2 rounded-lg bg-red-500 text-white font-semibold text-sm disabled:opacity-50"
+                  >
+                    {cancelling ? 'Cancelling...' : 'Yes, Cancel'}
+                  </button>
+                  <button
+                    onClick={() => setShowCancelWarning(false)}
+                    className="flex-1 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 font-semibold text-sm"
+                  >
+                    Keep Ride
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={handleCancelRide}
+                disabled={cancelling}
+                className="w-full py-3 rounded-xl border-2 border-red-500 text-red-500 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+              >
+                {cancelling ? 'Cancelling...' : 'Cancel Request'}
+              </button>
+            )}
           </div>
         ) : hasActiveRide ? (
           /* Active ride info */
@@ -306,6 +432,14 @@ export default function RiderDashboard() {
         ) : (
           /* Ride request form */
           <>
+            {/* Ride Type Selector */}
+            <RideTypeSelector
+              selected={rideType}
+              onSelect={setRideType}
+              distanceKm={route?.distanceKm}
+              durationMin={route?.durationMin}
+            />
+
             <RideRequestForm
               pickup={pickup}
               destination={destination}
@@ -318,9 +452,33 @@ export default function RiderDashboard() {
               onRequestRide={handleRequestRide}
               loading={loading || rideLoading}
             />
+
+            {/* Promo code input */}
+            {pickup && destination && route && (
+              <PromoCodeInput fareEstimate={calculateFare(route.distanceKm, route.durationMin ?? 0, rideType)} />
+            )}
+
+            {/* Schedule ride option */}
+            {pickup && destination && (
+              <button
+                onClick={() => setShowSchedulePicker(true)}
+                className="w-full py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-medium text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center gap-2"
+              >
+                📅 Schedule for Later
+              </button>
+            )}
+
             <p className="text-center text-xs text-gray-400 dark:text-gray-600">
               Or tap the map to set locations
             </p>
+
+            {/* Schedule Picker Modal */}
+            {showSchedulePicker && (
+              <ScheduleRidePicker
+                onSchedule={handleScheduleRide}
+                onCancel={() => setShowSchedulePicker(false)}
+              />
+            )}
           </>
         )}
       </div>
