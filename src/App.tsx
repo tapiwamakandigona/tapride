@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import NetworkBanner from './components/Layout/NetworkBanner';
+import UpdateBanner from './components/Layout/UpdateBanner';
 import AppLayout from './components/Layout/AppLayout';
 import Splash from './pages/Splash';
 import Login from './pages/Login';
@@ -63,6 +64,7 @@ export default function App() {
     <ErrorBoundary>
       <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white">
         <NetworkBanner />
+        <UpdateBanner />
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<Splash />} />

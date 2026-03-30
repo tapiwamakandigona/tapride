@@ -1,7 +1,7 @@
 {
   "name": "tapride",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Affordable ride-hailing app for Zimbabwe — dynamic pricing, fare bidding, real-time tracking",
   "author": "Tapiwa Makandigona",
   "license": "MIT",
@@ -21,7 +21,10 @@
   },
   "dependencies": {
     "@capacitor/android": "^5.7.0",
+    "@capacitor/app": "^5.0.0",
+    "@capacitor/app": "^5.0.8",
     "@capacitor/core": "^5.7.0",
+    "@capacitor/filesystem": "^5.2.2",
     "@supabase/supabase-js": "^2.39.0",
     "leaflet": "^1.9.4",
     "react": "^18.2.0",

@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version override (e.g. v2.0.0). Leave blank to use package.json version.'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -19,6 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - uses: actions/setup-java@v4
         with:
@@ -28,57 +34,136 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="v$(node -p 'require("./package.json").version')"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version: $VERSION"
+
       - name: Install dependencies
-        run: npm install
+        run: npm ci || npm install
 
       - name: Build web app
         run: npm run build
 
-      - name: Install Capacitor CLI
-        run: npm install -g @capacitor/cli
-
-      - name: Add Android platform
-        run: npx cap add android
-
       - name: Sync Capacitor
         run: npx cap sync android
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            android/.gradle
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/build.gradle', 'android/app/build.gradle') }}
+          restore-keys: gradle-${{ runner.os }}-
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug
+      # --- Signed release build (if keystore secrets are available) ---
+      - name: Decode keystore
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | base64 -d > android/app/release-keystore.jks
+
+      - name: Build signed release APK
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file="$(pwd)/app/release-keystore.jks" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
         working-directory: android
 
-      - name: Get version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      # --- Fallback: unsigned debug build ---
+      - name: Build debug APK (no signing secrets)
+        if: ${{ secrets.KEYSTORE_BASE64 == '' }}
+        run: |
+          echo "⚠️  No signing secrets found — building debug APK"
+          ./gradlew assembleDebug
+        working-directory: android
 
-      - name: Rename APK
+      - name: Collect APK
         run: |
           mkdir -p release
-          cp android/app/build/outputs/apk/debug/app-debug.apk release/TapRide-${{ steps.version.outputs.VERSION }}.apk
+          # Prefer release APK, fall back to debug
+          APK=$(find android/app/build/outputs/apk -name '*.apk' -path '*/release/*' 2>/dev/null | head -1)
+          if [ -z "$APK" ]; then
+            APK=$(find android/app/build/outputs/apk -name '*.apk' | head -1)
+          fi
+          cp "$APK" "release/TapRide-${{ steps.version.outputs.VERSION }}.apk"
+          echo "APK_PATH=release/TapRide-${{ steps.version.outputs.VERSION }}.apk" >> "$GITHUB_ENV"
 
-      - name: Create Release
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TapRide-${{ steps.version.outputs.VERSION }}
+          path: release/*.apk
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           name: TapRide ${{ steps.version.outputs.VERSION }}
           body: |
-            ## TapRide ${{ steps.version.outputs.VERSION }}
+            ## 🚗 TapRide ${{ steps.version.outputs.VERSION }}
 
-            ### What's included
-            - Ride-hailing app with real-time tracking
-            - Rider & Driver modes
-            - In-app chat and rating system
-            - Dark/Light theme
+            A full-featured ride-hailing app for Zimbabwe — affordable, fast, and built for real conditions.
 
-            ### Installation
-            1. Download `TapRide-${{ steps.version.outputs.VERSION }}.apk`
-            2. Enable "Install from unknown sources" on your device
-            3. Install and enjoy!
+            ### ✨ Features
+
+            **Ride Experience**
+            - 🗺️ Real-time GPS tracking with live ETA updates
+            - 🚙 Multiple ride types — Economy, Comfort, XL
+            - 📅 Ride scheduling — book ahead for important trips
+            - 🧾 Ride receipts with full fare breakdown
+            - ⭐ Post-ride ratings & feedback
+
+            **Pricing & Payments**
+            - 📈 Dynamic pricing with surge & time-of-day multipliers
+            - 🤝 InDrive-style fare bidding — riders propose, drivers counter
+            - 🎟️ Promo codes for discounts
+            - ❌ Cancellation penalties to reduce no-shows
+
+            **Safety & Trust**
+            - 🆘 SOS emergency system with location sharing
+            - ✅ Driver verification (license, vehicle docs)
+            - 💬 In-app chat with typing indicators
+
+            **Smart Features**
+            - 🧠 Smart driver matching (distance, rating, acceptance rate)
+            - 📡 Network status detection with offline resilience
+            - 🔄 Auto-update system — downloads & installs new APKs automatically
+            - 🌙 Dark mode support
+
+            **Quality**
+            - 🧪 54 automated tests (Vitest + React Testing Library)
+            - 📱 Capacitor Android build with GitHub Actions CI/CD
+
+            ### 📲 Installation
+            1. Download **TapRide-${{ steps.version.outputs.VERSION }}.apk** below
+            2. On your Android device, allow "Install from unknown sources" if prompted
+            3. Open the APK and install
+            4. Enjoy! 🎉
 
             ---
-            *Made by Tapiwa Makandigona*
+            *Made with ❤️ by Tapiwa Makandigona*
           files: release/TapRide-${{ steps.version.outputs.VERSION }}.apk
           draft: false
           prerelease: false
