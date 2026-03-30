@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLoadingTimeout } from '../hooks/useLoadingTimeout';
+import RetryError from '../components/Layout/RetryError';
 import { supabase } from '../lib/supabase';
 import { formatFare } from '../lib/fare';
 import type { Ride } from '../types';
@@ -10,11 +12,15 @@ export default function ScheduledRides() {
   const { user } = useAuth();
   const [rides, setRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const { slow, timedOut } = useLoadingTimeout(loading);
 
   const fetchScheduled = async () => {
     if (!user) return;
     setLoading(true);
+    setFetchError(false);
+    try {
     const { data } = await supabase
       .from('rides')
       .select('*')
@@ -26,7 +32,11 @@ export default function ScheduledRides() {
       .limit(20);
 
     setRides((data as Ride[]) || []);
+    } catch {
+      setFetchError(true);
+    } finally {
     setLoading(false);
+    }
   };
 
   useEffect(() => { fetchScheduled(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -64,9 +74,14 @@ export default function ScheduledRides() {
 
       <div className="flex-1 px-4 py-4">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
+          (timedOut || fetchError) ? (
+            <RetryError message="Couldn't load scheduled rides" onRetry={fetchScheduled} />
+          ) : (
+          <div className="flex flex-col items-center justify-center py-12 gap-2">
             <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+            {slow && <p className="text-sm text-gray-400 dark:text-gray-500">Taking longer than expected…</p>}
           </div>
+          )
         ) : rides.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-500 dark:text-gray-400 font-medium">No scheduled rides</p>

@@ -27,6 +27,15 @@ jobs:
       - run: npm install
       - run: npm run build
 
+      # Copy index.html → 404.html as fallback for SPA routing.
+      # The public/404.html handles encoding, but having index.html as 404
+      # is an extra safety net (some edge cases skip the redirect entirely).
+      - name: Ensure 404.html exists in dist
+        run: |
+          if [ ! -f dist/404.html ]; then
+            cp dist/index.html dist/404.html
+          fi
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

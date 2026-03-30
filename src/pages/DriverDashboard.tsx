@@ -175,14 +175,20 @@ export default function DriverDashboard() {
     setError('');
     try {
       await acceptRide(rideId);
-      // After accepting, navigate to active ride
+      // Remove accepted ride from list immediately
+      setNearbyRequests((prev) => prev.filter((r) => r.id !== rideId));
+      console.warn('[TapRide] Navigating to active ride after accepting:', rideId);
       navigate('/ride/active');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to accept ride';
       setError(message);
-      // Refresh the list since the ride may have been taken
-      const requests = await fetchNearbyRequests();
-      setNearbyRequests(requests);
+      // Refresh the list since the ride may have been taken by another driver
+      try {
+        const requests = await fetchNearbyRequests();
+        setNearbyRequests(requests);
+      } catch {
+        // Silently fail
+      }
     } finally {
       setAcceptingRideId(null);
     }

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useLoadingTimeout } from '../hooks/useLoadingTimeout';
+import RetryError from '../components/Layout/RetryError';
 import { supabase } from '../lib/supabase';
 import { formatFare } from '../lib/fare';
 import type { Ride } from '../types';
@@ -18,6 +20,8 @@ export default function DriverEarnings() {
   const [recentRides, setRecentRides] = useState<Ride[]>([]);
   const [dailyChart, setDailyChart] = useState<DailyEarning[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
+  const { slow, timedOut } = useLoadingTimeout(loading);
 
   useEffect(() => {
     if (!user) return;
@@ -27,6 +31,7 @@ export default function DriverEarnings() {
   const fetchEarnings = async () => {
     if (!user) return;
     setLoading(true);
+    setFetchError(false);
 
     try {
       // Fetch all completed rides for this driver
@@ -85,6 +90,7 @@ export default function DriverEarnings() {
       setDailyChart(chartData);
     } catch (err) {
       console.warn('[TapRide] Failed to fetch earnings:', err);
+      setFetchError(true);
     } finally {
       setLoading(false);
     }
@@ -98,9 +104,13 @@ export default function DriverEarnings() {
   };
 
   if (loading) {
+    if (timedOut || fetchError) {
+      return <RetryError message="Couldn't load earnings" onRetry={fetchEarnings} />;
+    }
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 gap-2">
         <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+        {slow && <p className="text-sm text-gray-400 dark:text-gray-500">Taking longer than expected…</p>}
       </div>
     );
   }

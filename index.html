@@ -21,23 +21,31 @@
     <link rel="apple-touch-icon" href="/tapride/favicon.svg" />
     <link rel="manifest" href="/tapride/manifest.json" />
     <title>TapRide</title>
+    <!-- Cache-busting: GitHub Pages sets aggressive cache headers (max-age=86400).
+         These meta tags tell browsers not to serve stale index.html. JS/CSS files
+         use content hashes in filenames so they're fine — it's index.html that gets stale. -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <!-- DNS prefetch / preconnect for critical origins -->
     <link rel="preconnect" href="https://bswikdlxlutpdaweuohi.supabase.co" crossorigin />
     <link rel="dns-prefetch" href="https://bswikdlxlutpdaweuohi.supabase.co" />
     <link rel="dns-prefetch" href="https://tile.openstreetmap.org" />
     <link rel="dns-prefetch" href="https://nominatim.openstreetmap.org" />
-    <!-- SPA redirect decoder for GitHub Pages 404 handling -->
+    <!-- SPA redirect decoder — matches the encoding in 404.html.
+         Runs inline before any JS bundle loads for fastest possible URL restoration. -->
     <script>
-      (function(l) {
-        if (l.search[1] === '/') {
-          var decoded = l.search.slice(1).split('&').map(function(s) {
-            return s.replace(/~and~/g, '&');
-          }).join('?');
-          window.history.replaceState(null, null,
-            l.pathname.slice(0, -1) + decoded + l.hash
-          );
+      (function() {
+        var params = new URLSearchParams(window.location.search);
+        var p = params.get('p');
+        if (p) {
+          var path = decodeURIComponent(p);
+          var q = params.get('q') ? '?' + decodeURIComponent(params.get('q')) : '';
+          var h = params.get('h') ? decodeURIComponent(params.get('h')) : '';
+          var base = window.location.pathname.replace(/\/$/, '');
+          window.history.replaceState(null, '', base + path + q + h);
         }
-      }(window.location));
+      })();
     </script>
   </head>
   <body class="bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">

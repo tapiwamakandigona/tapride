@@ -234,10 +234,15 @@ export default function RiderDashboard() {
   const isInProgress = currentRide?.status === 'in_progress';
   const hasActiveRide = isAccepted || isInProgress;
 
-  // Haptic feedback when ride gets accepted
+  // Haptic feedback + auto-navigate when ride gets accepted
   useEffect(() => {
-    if (isAccepted) hapticSuccess();
-  }, [isAccepted]);
+    if (isAccepted) {
+      hapticSuccess();
+      console.warn('[TapRide] Ride accepted! Auto-navigating to active ride in 2s');
+      const timer = setTimeout(() => navigate('/ride/active'), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isAccepted, navigate]);
 
   // Driver info when ride is accepted
   const driverName = currentRide?.driver?.full_name;

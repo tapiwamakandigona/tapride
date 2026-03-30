@@ -4,17 +4,27 @@
     <meta charset="utf-8" />
     <title>TapRide</title>
     <script>
-      // SPA redirect for GitHub Pages
-      // Encodes the path into a query string and redirects to index.html
-      var pathSegmentsToKeep = 1;
-      var l = window.location;
-      l.replace(
-        l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-        l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?/' +
-        l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
-        (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
-        l.hash
-      );
+      // GitHub Pages SPA redirect — preserves path, query string, and hash fragment.
+      // Based on https://github.com/rafgraph/spa-github-pages (improved).
+      //
+      // How it works:
+      // 1. GitHub Pages serves this 404.html for any unknown route
+      // 2. This script encodes the full URL into a query string on index.html
+      // 3. A matching script in index.html decodes it back and uses replaceState
+      //
+      // pathSegmentsToKeep = 1 means keep "/tapride" (the repo name)
+      (function () {
+        var l = window.location;
+        var pathSegmentsToKeep = 1;
+        var repo = l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/');
+        var path = l.pathname.slice(repo.length) || '/';
+        // Encode path + query + hash into a single query param to avoid losing anything
+        var redirectUrl = repo + '/?p=' +
+          encodeURIComponent(path) +
+          (l.search ? '&q=' + encodeURIComponent(l.search.slice(1)) : '') +
+          (l.hash ? '&h=' + encodeURIComponent(l.hash) : '');
+        l.replace(redirectUrl);
+      })();
     </script>
   </head>
   <body></body>

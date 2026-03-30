@@ -10,6 +10,8 @@ import MapView from '../components/Map/MapView';
 import SOSButton from '../components/Safety/SOSButton';
 import CallButton from '../components/Ride/CallButton';
 import { formatFare } from '../lib/fare';
+import { supabase } from '../lib/supabase';
+import type { Profile } from '../types';
 
 export default function ActiveRide() {
   const navigate = useNavigate();
@@ -27,23 +29,51 @@ export default function ActiveRide() {
   const { slow, timedOut } = useLoadingTimeout(initializing);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [rideNotFound, setRideNotFound] = useState(false);
+  const [fetchedProfiles, setFetchedProfiles] = useState<{ rider?: Profile; driver?: Profile }>({});
   const [route, setRoute] = useState<RouteResult | null>(null);
   const [etaSeconds, setEtaSeconds] = useState<number | null>(null);
 
   const isDriver = profile?.user_type === 'driver';
 
-  // If no active ride (after initializing completes), redirect back
+  // If no active ride after initializing, handle gracefully
   useEffect(() => {
     if (initializing) return;
-    if (!currentRide || currentRide.status === 'completed' || currentRide.status === 'cancelled') {
-      if (currentRide?.status === 'completed') {
-        navigate('/ride/rate', { replace: true, state: { ride: currentRide } });
-      } else {
-        const path = isDriver ? '/driver' : '/rider';
-        navigate(path, { replace: true });
-      }
+    if (!currentRide) {
+      // Wait a moment then show "ride not found" instead of infinite spinner
+      const timer = setTimeout(() => setRideNotFound(true), 2000);
+      return () => clearTimeout(timer);
+    }
+    setRideNotFound(false);
+    if (currentRide.status === 'completed') {
+      navigate('/ride/rate', { replace: true, state: { ride: currentRide } });
+    } else if (currentRide.status === 'cancelled') {
+      const path = isDriver ? '/driver' : '/rider';
+      navigate(path, { replace: true });
     }
   }, [currentRide, initializing, isDriver, navigate]);
+
+  // Fetch missing profiles separately if ride doesn't have them
+  useEffect(() => {
+    if (!currentRide) return;
+    let cancelled = false;
+    const fetchMissing = async () => {
+      const updates: { rider?: Profile; driver?: Profile } = {};
+      if (currentRide.rider_id && !currentRide.rider) {
+        const { data } = await supabase.from('profiles').select('*').eq('id', currentRide.rider_id).single();
+        if (data && !cancelled) updates.rider = data as Profile;
+      }
+      if (currentRide.driver_id && !currentRide.driver) {
+        const { data } = await supabase.from('profiles').select('*').eq('id', currentRide.driver_id).single();
+        if (data && !cancelled) updates.driver = data as Profile;
+      }
+      if (!cancelled && (updates.rider || updates.driver)) {
+        setFetchedProfiles(updates);
+      }
+    };
+    fetchMissing();
+    return () => { cancelled = true; };
+  }, [currentRide?.rider_id, currentRide?.driver_id, currentRide?.rider, currentRide?.driver]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch route for display
   useEffect(() => {
@@ -66,7 +96,6 @@ export default function ActiveRide() {
       setEtaSeconds(null);
       return;
     }
-    // Initialize ETA based on route duration
     setEtaSeconds(Math.ceil(route.durationMin * 60));
     const interval = setInterval(() => {
       setEtaSeconds((prev) => {
@@ -105,7 +134,33 @@ export default function ActiveRide() {
     );
   }
 
-  if (!currentRide) return null;
+  if (!currentRide) {
+    if (rideNotFound) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 gap-4 p-4">
+          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Ride Not Found</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 text-center">This ride may have been completed or cancelled.</p>
+          <button
+            onClick={() => navigate(isDriver ? '/driver' : '/rider', { replace: true })}
+            className="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-xl transition-colors"
+          >
+            Go Home
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 gap-2">
+        <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Loading ride...</p>
+      </div>
+    );
+  }
 
   const handleStartRide = async () => {
     setLoading(true);
@@ -160,14 +215,16 @@ export default function ActiveRide() {
     ? position ? { lat: position.lat, lng: position.lng } : undefined
     : driverLocation ? { lat: driverLocation.lat, lng: driverLocation.lng } : undefined;
 
-  // Other party info
-  const otherParty = isDriver ? currentRide.rider : currentRide.driver;
+  // Other party info — use fetched profiles as fallback
+  const riderProfile = currentRide.rider || fetchedProfiles.rider;
+  const driverProfile = currentRide.driver || fetchedProfiles.driver;
+  const otherParty = isDriver ? riderProfile : driverProfile;
   const otherName = otherParty?.full_name;
   const otherRating = otherParty?.rating;
-  const vehicleInfo = !isDriver && currentRide.driver
-    ? [currentRide.driver.vehicle_color, currentRide.driver.vehicle_make, currentRide.driver.vehicle_model].filter(Boolean).join(' ')
+  const vehicleInfo = !isDriver && driverProfile
+    ? [driverProfile.vehicle_color, driverProfile.vehicle_make, driverProfile.vehicle_model].filter(Boolean).join(' ')
     : null;
-  const licensePlate = !isDriver ? currentRide.driver?.license_plate : null;
+  const licensePlate = !isDriver ? driverProfile?.license_plate : null;
 
   return (
     <div className="flex flex-col h-full">

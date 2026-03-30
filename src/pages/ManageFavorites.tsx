@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFavorites, type FavoriteLocation } from '../hooks/useFavorites';
+import { useLoadingTimeout } from '../hooks/useLoadingTimeout';
+import RetryError from '../components/Layout/RetryError';
 
 const ICONS = [
   { value: 'home', emoji: '🏠', label: 'Home' },
@@ -13,7 +15,8 @@ const ICONS = [
 
 export default function ManageFavorites() {
   const navigate = useNavigate();
-  const { favorites, loading, addFavorite, updateFavorite, deleteFavorite } = useFavorites();
+  const { favorites, loading, addFavorite, updateFavorite, deleteFavorite, refresh } = useFavorites();
+  const { slow, timedOut } = useLoadingTimeout(loading);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [label, setLabel] = useState('');
@@ -57,9 +60,13 @@ export default function ManageFavorites() {
   const getEmoji = (iconValue: string) => ICONS.find(i => i.value === iconValue)?.emoji || '⭐';
 
   if (loading) {
+    if (timedOut) {
+      return <RetryError message="Couldn't load saved places" onRetry={refresh} />;
+    }
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 gap-2">
         <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+        {slow && <p className="text-sm text-gray-400 dark:text-gray-500">Taking longer than expected…</p>}
       </div>
     );
   }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLoadingTimeout } from '../hooks/useLoadingTimeout';
 import { supabase } from '../lib/supabase';
 import { formatFare } from '../lib/fare';
 import { lightTap } from '../lib/haptics';
@@ -17,6 +18,7 @@ export default function RateRide() {
 
   const [ride, setRide] = useState<Ride | null>(stateRide);
   const [rideLoading, setRideLoading] = useState(!stateRide);
+  const { timedOut: rideTimedOut } = useLoadingTimeout(rideLoading);
   const [rating, setRating] = useState(0);
   const [hoveredRating, setHoveredRating] = useState(0);
   const [comment, setComment] = useState('');
@@ -101,8 +103,23 @@ export default function RateRide() {
     navigate(homePath, { replace: true });
   };
 
-  // Loading state for DB fallback
+  // Loading state for DB fallback — with timeout escape hatch
   if (rideLoading) {
+    if (rideTimedOut) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+          <div className="text-center">
+            <p className="text-gray-500 dark:text-gray-400 mb-4">Couldn't load ride data.</p>
+            <button
+              onClick={() => navigate(homePath, { replace: true })}
+              className="bg-primary-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary-700 transition-colors"
+            >
+              Go Home
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />

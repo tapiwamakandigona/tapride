@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
+import { useLoadingTimeout } from './hooks/useLoadingTimeout';
 import ErrorBoundary from './components/ErrorBoundary';
 import NetworkBanner from './components/Layout/NetworkBanner';
 import UpdateBanner from './components/Layout/UpdateBanner';
@@ -32,6 +33,10 @@ const DriverEarnings = lazy(() => import('./pages/DriverEarnings'));
 const ManageFavorites = lazy(() => import('./pages/ManageFavorites'));
 
 function LazyFallback() {
+  const { timedOut } = useLoadingTimeout(true);
+  if (timedOut) {
+    return <RetryError message="Page took too long to load" onRetry={() => window.location.reload()} />;
+  }
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
       <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" role="status" aria-label="Loading page" />
@@ -80,6 +85,22 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Router choice: BrowserRouter + 404.html redirect (not HashRouter).
+ *
+ * Why not HashRouter?
+ * - HashRouter puts routes after # (e.g. /tapride/#/rider) which breaks:
+ *   • Supabase OAuth callbacks (redirect URL won't match)
+ *   • Open Graph / social sharing (crawlers ignore hash fragments)
+ *   • Analytics tracking of page views
+ * - BrowserRouter + the 404.html→index.html redirect trick works reliably
+ *   on GitHub Pages. The 404.html encodes the path into query params,
+ *   and a script in index.html decodes it via history.replaceState before
+ *   React mounts. This gives clean URLs that work on refresh.
+ *
+ * The only downside is a brief 404 status code on direct navigation,
+ * which doesn't matter for a client-side app (no SSR/SEO needed).
+ */
 export default function App() {
   return (
     <ToastProvider>

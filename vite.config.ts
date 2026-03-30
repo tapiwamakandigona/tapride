@@ -13,6 +13,12 @@ export default defineConfig({
           'vendor-supabase': ['@supabase/supabase-js'],
           'vendor-leaflet': ['leaflet', 'react-leaflet'],
         },
+        // Content hashes in all filenames for cache busting.
+        // GitHub Pages caches aggressively (max-age=86400) but hashed
+        // filenames ensure new deploys always serve fresh code.
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
       },
     },
     minify: 'esbuild',

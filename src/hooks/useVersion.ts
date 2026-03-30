@@ -38,12 +38,14 @@ export function useVersionCheck(): VersionState {
 
   const doCheck = useCallback(async () => {
     setChecking(true);
+    const hardTimeout = setTimeout(() => setChecking(false), 5000);
     try {
       const result = await checkForUpdateFromGitHub();
       setInfo(result);
     } catch {
       // Silently fail — treat as no update
     } finally {
+      clearTimeout(hardTimeout);
       setChecking(false);
     }
   }, []);

@@ -2,16 +2,33 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { withTimeout } from '../lib/resilience';
-import type { Ride, RideStatus, DriverLocation } from '../types';
+import type { Ride, RideStatus, DriverLocation, Profile } from '../types';
 import { haversineDistance } from '../lib/geo';
 import { calculateFare } from '../lib/fare';
 import type { RideType } from '../lib/fare';
-import { distanceToPickup } from '../lib/matching';
 
 // Select with joined rider/driver profiles
 const RIDE_SELECT = '*, rider:profiles!rides_rider_id_fkey(*), driver:profiles!rides_driver_id_fkey(*)';
 // Fallback without FK join (in case FK names differ)
 const RIDE_SELECT_FALLBACK = '*';
+
+/** Fetch a single profile by ID, returns null on failure */
+async function fetchProfileById(userId: string): Promise<Profile | null> {
+  try {
+    const { data, error } = await withTimeout(
+      supabase.from('profiles').select('*').eq('id', userId).single(),
+      3000,
+    );
+    if (error) {
+      console.warn('[TapRide] fetchProfileById failed:', userId, error.message);
+      return null;
+    }
+    return data as Profile;
+  } catch (err) {
+    console.warn('[TapRide] fetchProfileById exception:', userId, err);
+    return null;
+  }
+}
 
 export function useRide() {
   const { user, profile } = useAuth();
@@ -21,20 +38,43 @@ export function useRide() {
   const [initializing, setInitializing] = useState(true);
   const [initError, setInitError] = useState(false);
   const mountedRef = useRef(true);
+  const subscriptionRef = useRef<string | null>(null); // track subscribed ride ID
+  const profileCacheRef = useRef<Map<string, Profile>>(new Map()); // cache rider/driver profiles
 
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
+  /** Get or fetch a profile, using cache */
+  const getCachedProfile = useCallback(async (userId: string): Promise<Profile | null> => {
+    const cached = profileCacheRef.current.get(userId);
+    if (cached) return cached;
+    const fetched = await fetchProfileById(userId);
+    if (fetched) profileCacheRef.current.set(userId, fetched);
+    return fetched;
+  }, []);
+
+  /** Enrich a raw ride row with cached/fetched profiles */
+  const enrichRideWithProfiles = useCallback(async (ride: Ride): Promise<Ride> => {
+    const enriched = { ...ride };
+    if (ride.rider_id && !ride.rider) {
+      enriched.rider = await getCachedProfile(ride.rider_id) ?? undefined;
+    }
+    if (ride.driver_id && !ride.driver) {
+      enriched.driver = await getCachedProfile(ride.driver_id) ?? undefined;
+    }
+    return enriched;
+  }, [getCachedProfile]);
+
   // Fetch active ride for current user — with profile join
-  const fetchActiveRide = useCallback(async () => {
+  const fetchActiveRide = useCallback(async (retryCount = 0) => {
     if (!user) {
-      setInitializing(false);
+      if (mountedRef.current) setInitializing(false);
       return;
     }
     try {
-      setInitError(false);
+      if (mountedRef.current) setInitError(false);
       const activeStatuses: RideStatus[] = ['requested', 'accepted', 'in_progress'];
       const column = profile?.user_type === 'driver' ? 'driver_id' : 'rider_id';
 
@@ -52,6 +92,7 @@ export function useRide() {
       );
 
       if (joinErr) {
+        console.warn('[TapRide] fetchActiveRide join failed, using fallback:', joinErr.message);
         const { data: fallback } = await withTimeout(
           supabase
             .from('rides')
@@ -68,6 +109,25 @@ export function useRide() {
         data = joined as Ride | null;
       }
 
+      // Retry once after a short delay if no ride found (write propagation delay)
+      if (!data && retryCount < 1) {
+        console.warn('[TapRide] fetchActiveRide: not found, retrying in 1s...');
+        await new Promise((r) => setTimeout(r, 1000));
+        if (mountedRef.current) return fetchActiveRide(retryCount + 1);
+        return;
+      }
+
+      if (data) {
+        // Enrich with profiles if missing
+        data = await enrichRideWithProfiles(data);
+        // Cache profiles from joined data
+        if (data.rider) profileCacheRef.current.set(data.rider_id, data.rider);
+        if (data.driver_id && data.driver) profileCacheRef.current.set(data.driver_id, data.driver);
+        console.warn('[TapRide] fetchActiveRide: found ride', data.id, 'status:', data.status);
+      } else {
+        console.warn('[TapRide] fetchActiveRide: no active ride found');
+      }
+
       if (mountedRef.current) setCurrentRide(data);
     } catch (err) {
       console.warn('[TapRide] fetchActiveRide error:', err);
@@ -75,7 +135,7 @@ export function useRide() {
     } finally {
       if (mountedRef.current) setInitializing(false);
     }
-  }, [user, profile?.user_type]);
+  }, [user, profile?.user_type, enrichRideWithProfiles]);
 
   // Request a ride (rider)
   const requestRide = async (
@@ -93,11 +153,10 @@ export function useRide() {
     setLoading(true);
 
     const distanceKm = routeDistanceKm ?? haversineDistance(pickupLat, pickupLng, destLat, destLng);
-    const durationMin = routeDurationMin ?? distanceKm * 2; // rough estimate if no OSRM
+    const durationMin = routeDurationMin ?? distanceKm * 2;
     const fareEstimate = calculateFare(distanceKm, durationMin, rideType);
 
     try {
-      // Insert ONCE, then try to select with profile join
       const { data: inserted, error: insertErr } = await supabase
         .from('rides')
         .insert({
@@ -119,7 +178,9 @@ export function useRide() {
       if (insertErr) throw new Error(insertErr.message);
       if (!inserted) throw new Error('Failed to create ride');
 
-      // Now try to re-fetch with profile join for richer data
+      console.warn('[TapRide] Ride requested:', inserted.id);
+
+      // Try to re-fetch with profile join for richer data
       const { data: withProfiles } = await supabase
         .from('rides')
         .select(RIDE_SELECT)
@@ -127,6 +188,11 @@ export function useRide() {
         .single();
 
       const ride = (withProfiles || inserted) as Ride;
+      // Attach current user as rider profile if missing
+      if (!ride.rider && profile) {
+        ride.rider = profile as Profile;
+        profileCacheRef.current.set(user.id, profile as Profile);
+      }
       if (mountedRef.current) setCurrentRide(ride);
       return ride;
     } finally {
@@ -140,7 +206,6 @@ export function useRide() {
     setLoading(true);
 
     try {
-      // Update ONCE with the status guard, plain select
       const { data: updated, error: updateErr } = await supabase
         .from('rides')
         .update({
@@ -161,14 +226,22 @@ export function useRide() {
       }
       if (!updated) throw new Error('This ride was already accepted by another driver');
 
-      // Re-fetch with profile join for richer data
-      const { data: withProfiles } = await supabase
-        .from('rides')
-        .select(RIDE_SELECT)
-        .eq('id', rideId)
-        .single();
+      console.warn('[TapRide] Ride accepted:', rideId, 'by driver:', user.id);
 
-      const ride = (withProfiles || updated) as Ride;
+      // DON'T re-fetch with join — it races with the realtime subscription.
+      // Instead, build the ride object manually with the current user as driver.
+      const ride = updated as Ride;
+      // Attach current user as driver profile
+      if (profile) {
+        ride.driver = profile as Profile;
+        profileCacheRef.current.set(user.id, profile as Profile);
+      }
+      // Try to get rider profile from cache or fetch it
+      if (ride.rider_id && !ride.rider) {
+        const riderProfile = await getCachedProfile(ride.rider_id);
+        if (riderProfile) ride.rider = riderProfile;
+      }
+
       if (mountedRef.current) setCurrentRide(ride);
     } finally {
       if (mountedRef.current) setLoading(false);
@@ -177,12 +250,25 @@ export function useRide() {
 
   // Start ride (driver picked up rider)
   const startRide = async (rideId: string) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('rides')
       .update({ status: 'in_progress' as RideStatus, started_at: new Date().toISOString() })
-      .eq('id', rideId);
+      .eq('id', rideId)
+      .select('*')
+      .single();
     if (error) throw new Error(error.message);
-    await fetchActiveRide();
+
+    console.warn('[TapRide] Ride started:', rideId);
+
+    // Update local state directly instead of re-fetching
+    if (mountedRef.current && data) {
+      setCurrentRide((prev) => prev ? {
+        ...prev,
+        ...data,
+        rider: prev.rider,
+        driver: prev.driver,
+      } : data as Ride);
+    }
   };
 
   // Complete ride — returns the completed ride data for the rating page
@@ -197,6 +283,8 @@ export function useRide() {
       .eq('id', rideId);
     if (error) throw new Error(error.message);
 
+    console.warn('[TapRide] Ride completed:', rideId);
+
     const completedRide = currentRide ? { ...currentRide, status: 'completed' as RideStatus } : null;
     if (mountedRef.current) setCurrentRide(null);
     return completedRide;
@@ -206,16 +294,14 @@ export function useRide() {
   const cancelRide = async (rideId: string) => {
     if (!user) throw new Error('Not authenticated');
 
-    // Check if cancellation fee applies
     let fee = 0;
     if (currentRide) {
       const createdAt = new Date(currentRide.created_at).getTime();
       const now = Date.now();
       const twoMinMs = 2 * 60 * 1000;
       const isAccepted = currentRide.status === 'accepted' || currentRide.status === 'in_progress';
-
       if (now - createdAt > twoMinMs || isAccepted) {
-        fee = 1.0; // $1 cancellation fee
+        fee = 1.0;
       }
     }
 
@@ -225,7 +311,8 @@ export function useRide() {
       .eq('id', rideId);
     if (error) throw new Error(error.message);
 
-    // Apply fee and increment cancellation count
+    console.warn('[TapRide] Ride cancelled:', rideId, 'fee:', fee);
+
     if (fee > 0 && profile) {
       await supabase
         .from('profiles')
@@ -240,7 +327,6 @@ export function useRide() {
     return { fee };
   };
 
-  // Check if user has excessive cancellations in last 24h
   const checkCancellationWarning = useCallback(async (): Promise<boolean> => {
     if (!user) return false;
     const { data } = await supabase
@@ -251,12 +337,10 @@ export function useRide() {
     return (data?.cancellation_count ?? 0) >= 5;
   }, [user]);
 
-  // Clear current ride from state
   const clearCurrentRide = () => {
     setCurrentRide(null);
   };
 
-  // Update driver location
   const updateDriverLocation = useCallback(async (lat: number, lng: number, heading?: number | null, speed?: number | null) => {
     if (!user) return;
     await supabase.from('driver_locations').upsert({
@@ -270,7 +354,16 @@ export function useRide() {
   }, [user]);
 
   // Subscribe to ride updates (returns unsubscribe function)
+  // Handles raw DB rows by merging with cached profiles
   const subscribeToRide = useCallback((rideId: string) => {
+    // Prevent duplicate subscriptions
+    if (subscriptionRef.current === rideId) {
+      console.warn('[TapRide] Already subscribed to ride:', rideId);
+      return () => {};
+    }
+    subscriptionRef.current = rideId;
+    console.warn('[TapRide] Subscribing to ride updates:', rideId);
+
     const channel = supabase
       .channel(`ride-${rideId}`)
       .on('postgres_changes', {
@@ -278,26 +371,65 @@ export function useRide() {
         schema: 'public',
         table: 'rides',
         filter: `id=eq.${rideId}`,
-      }, (payload) => {
-        const updated = payload.new as Ride;
-        if (updated.status === 'cancelled' || updated.status === 'completed') {
-          // Ride ended — clear state (the useEffect in ActiveRide handles navigation)
-          if (mountedRef.current) setCurrentRide(updated);
-        } else {
-          // Merge the update into current ride, preserving joined profile data
+      }, async (payload) => {
+        if (!mountedRef.current) return;
+
+        const rawUpdate = payload.new as Record<string, unknown>;
+        const newStatus = rawUpdate.status as RideStatus;
+        console.warn('[TapRide] Realtime: ride status changed to', newStatus, 'for ride', rideId);
+
+        if (newStatus === 'completed' || newStatus === 'cancelled') {
+          // Ride ended — clear state cleanly
+          console.warn('[TapRide] Realtime: ride ended with status', newStatus);
           if (mountedRef.current) {
-            setCurrentRide((prev) => prev ? { ...prev, ...updated, rider: prev.rider, driver: prev.driver } : updated);
+            setCurrentRide((prev) => prev ? { ...prev, status: newStatus } : null);
+          }
+          return;
+        }
+
+        // For other updates, merge with existing state and cached profiles
+        if (mountedRef.current) {
+          setCurrentRide((prev) => {
+            if (!prev) return null;
+
+            // Start with previous state (has profile joins)
+            const merged: Ride = { ...prev };
+
+            // Copy all scalar fields from the raw update
+            for (const [key, value] of Object.entries(rawUpdate)) {
+              if (key !== 'rider' && key !== 'driver') {
+                (merged as unknown as Record<string, unknown>)[key] = value;
+              }
+            }
+
+            // Preserve existing profile data
+            merged.rider = prev.rider;
+            merged.driver = prev.driver;
+
+            return merged;
+          });
+
+          // If status changed to 'accepted' and we're the rider, fetch driver profile
+          if (newStatus === 'accepted' && rawUpdate.driver_id && profile?.user_type === 'rider') {
+            console.warn('[TapRide] Realtime: ride accepted, fetching driver profile:', rawUpdate.driver_id);
+            const driverProfile = await getCachedProfile(rawUpdate.driver_id as string);
+            if (driverProfile && mountedRef.current) {
+              setCurrentRide((prev) => prev ? { ...prev, driver: driverProfile } : null);
+            }
           }
         }
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+    return () => {
+      console.warn('[TapRide] Unsubscribing from ride:', rideId);
+      subscriptionRef.current = null;
+      supabase.removeChannel(channel);
+    };
+  }, [profile?.user_type, getCachedProfile]);
 
   // Subscribe to driver location (returns unsubscribe function)
   const subscribeToDriverLocation = useCallback((driverId: string) => {
-    // Fetch initial location
     supabase
       .from('driver_locations')
       .select('*')
@@ -320,7 +452,7 @@ export function useRide() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Fetch nearby ride requests (driver) — joins rider profile, adds distance
+  // Fetch nearby ride requests (driver)
   const fetchNearbyRequests = useCallback(async (driverLat?: number, driverLng?: number): Promise<Ride[]> => {
     const { data, error } = await supabase
       .from('rides')
@@ -331,7 +463,6 @@ export function useRide() {
       .limit(20);
 
     if (error) {
-      // Fallback without join if FK reference doesn't work
       const { data: fallbackData } = await supabase
         .from('rides')
         .select('*')
@@ -345,11 +476,15 @@ export function useRide() {
     return (data as Ride[]) || [];
   }, []);
 
-  // No changes needed below — distance is computed in RideRequestCard via props
-
   // Auto-subscribe to ride updates when there's an active ride
   useEffect(() => {
-    if (!currentRide?.id) return;
+    if (!currentRide?.id) {
+      // Clear subscription ref when no ride
+      subscriptionRef.current = null;
+      return;
+    }
+    // Only subscribe if not already subscribed to this ride
+    if (subscriptionRef.current === currentRide.id) return;
     const unsub = subscribeToRide(currentRide.id);
     return () => { unsub(); };
   }, [currentRide?.id, subscribeToRide]);
