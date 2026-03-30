@@ -312,7 +312,7 @@ export default function Profile() {
 
             <button
               onClick={handleSignOut}
-              className="w-full py-3 rounded-xl border-2 border-red-500 text-red-500 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              className="w-full py-3 rounded-xl border-2 border-red-500 text-red-500 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
             >
               Sign Out
             </button>
@@ -322,7 +322,13 @@ export default function Profile() {
 
       {/* Sign out confirmation modal */}
       {showSignOutConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Sign out confirmation"
+          onKeyDown={(e) => { if (e.key === 'Escape') setShowSignOutConfirm(false); }}
+        >
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-xl">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
               Sign Out

@@ -3,9 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useRide } from '../hooks/useRide';
 import { useLocation as useGeoLocation } from '../hooks/useLocation';
+import { useLoadingTimeout } from '../hooks/useLoadingTimeout';
+import RetryError from '../components/Layout/RetryError';
 import { getRoute, type RouteResult } from '../lib/geo';
 import MapView from '../components/Map/MapView';
 import SOSButton from '../components/Safety/SOSButton';
+import CallButton from '../components/Ride/CallButton';
 import { formatFare } from '../lib/fare';
 
 export default function ActiveRide() {
@@ -21,6 +24,7 @@ export default function ActiveRide() {
     updateDriverLocation,
   } = useRide();
   const { position, startWatching } = useGeoLocation(false);
+  const { slow, timedOut } = useLoadingTimeout(initializing);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [route, setRoute] = useState<RouteResult | null>(null);
@@ -90,9 +94,13 @@ export default function ActiveRide() {
 
   // Show loading while initializing
   if (initializing) {
+    if (timedOut) {
+      return <RetryError message="Couldn't load ride details" onRetry={() => window.location.reload()} />;
+    }
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 gap-2">
         <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+        {slow && <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Taking longer than expected…</p>}
       </div>
     );
   }
@@ -185,15 +193,18 @@ export default function ActiveRide() {
               </span>
             )}
           </div>
-          <button
-            onClick={() => navigate('/ride/chat')}
-            className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-full text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            Chat
-          </button>
+          <div className="flex items-center gap-2">
+            <CallButton phoneNumber={otherParty?.phone} label={isDriver ? 'rider' : 'driver'} />
+            <button
+              onClick={() => navigate('/ride/chat')}
+              className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-full text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              Chat
+            </button>
+          </div>
         </div>
       </div>
 
@@ -277,7 +288,7 @@ export default function ActiveRide() {
             <button
               onClick={handleStartRide}
               disabled={loading}
-              className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-semibold py-3 rounded-xl transition-colors"
+              className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-semibold py-3 rounded-xl transition-colors focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
             >
               {loading ? 'Starting...' : 'Picked Up - Start Ride'}
             </button>

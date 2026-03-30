@@ -2,15 +2,23 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useVersionCheck } from '../hooks/useVersion';
+import { APP_VERSION } from '../lib/version';
+import { Link } from 'react-router-dom';
 
 export default function Splash() {
   const navigate = useNavigate();
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, authError } = useAuth();
   const version = useVersionCheck();
   const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   useEffect(() => {
     if (loading || version.checking) return;
+
+    // Auth failed or timed out — go to login
+    if (authError && !user) {
+      navigate('/login', { replace: true });
+      return;
+    }
 
     if (version.updateAvailable) {
       setShowUpdateModal(true);
@@ -19,7 +27,8 @@ export default function Splash() {
 
     const timer = setTimeout(() => {
       if (!user) {
-        navigate('/login', { replace: true });
+        const onboardingSeen = localStorage.getItem('onboarding_seen');
+        navigate(onboardingSeen ? '/login' : '/onboarding', { replace: true });
       } else if (profile?.user_type === 'driver') {
         navigate('/driver', { replace: true });
       } else {
@@ -28,7 +37,7 @@ export default function Splash() {
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [user, profile, loading, version.checking, version.updateAvailable, navigate]);
+  }, [user, profile, loading, authError, version.checking, version.updateAvailable, navigate]);
 
   const handleSkip = () => {
     setShowUpdateModal(false);
@@ -82,10 +91,23 @@ export default function Splash() {
         <div className="w-8 h-8 border-4 border-white/30 border-t-white rounded-full animate-spin" />
       </div>
 
+      {/* Estimate link */}
+      <Link
+        to="/estimate"
+        className="mt-6 text-white/80 hover:text-white text-sm font-medium underline underline-offset-2 transition-colors"
+      >
+        Estimate a fare
+      </Link>
+
       {/* Branding */}
-      <p className="absolute bottom-8 text-primary-200/60 dark:text-gray-500 text-sm">
-        Made by Tapiwa Makandigona
-      </p>
+      <div className="absolute bottom-8 text-center">
+        <p className="text-primary-200/60 dark:text-gray-500 text-sm">
+          Made by Tapiwa Makandigona
+        </p>
+        <p className="text-primary-200/40 dark:text-gray-600 text-xs mt-1">
+          v{APP_VERSION}
+        </p>
+      </div>
 
       {/* Update Modal */}
       {showUpdateModal && (

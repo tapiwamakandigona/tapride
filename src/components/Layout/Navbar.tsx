@@ -14,6 +14,7 @@ export default function Navbar() {
 
   const navItems = [
     { path: homePath, label: 'Home', icon: 'home' },
+    ...(!isRider ? [{ path: '/driver/earnings', label: 'Earnings', icon: 'earnings' }] : []),
     { path: '/history', label: 'History', icon: 'history' },
     ...(isRider ? [{ path: '/scheduled', label: 'Scheduled', icon: 'scheduled' }] : []),
     { path: '/profile', label: 'Profile', icon: 'profile' },
@@ -21,6 +22,7 @@ export default function Navbar() {
 
   const renderIcon = (icon: string, active: boolean) => {
     const cls = `w-5 h-5 ${active ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400 dark:text-gray-500'}`;
+    const ariaProps = { 'aria-hidden': true as const };
     switch (icon) {
       case 'home':
         return (
@@ -45,6 +47,13 @@ export default function Navbar() {
             <line x1="3" y1="10" x2="21" y2="10" />
           </svg>
         );
+      case 'earnings':
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="1" x2="12" y2="23" />
+            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          </svg>
+        );
       case 'profile':
         return (
           <svg xmlns="http://www.w3.org/2000/svg" className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -65,7 +74,7 @@ export default function Navbar() {
             key={item.path}
             to={item.path}
             aria-label={item.label}
-            className={`flex flex-col items-center py-2 px-3 text-xs transition-colors ${
+            className={`flex flex-col items-center py-2 px-3 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 rounded-lg ${
               isActive(item.path)
                 ? 'text-primary-600 dark:text-primary-400'
                 : 'text-gray-500 dark:text-gray-400'

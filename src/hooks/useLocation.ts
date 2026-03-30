@@ -5,6 +5,7 @@ export function useLocation(autoStart = true) {
   const [position, setPosition] = useState<GeoPosition | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [watching, setWatching] = useState(false);
+  const [locationUnavailable, setLocationUnavailable] = useState(false);
   const watchIdRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
 
@@ -18,6 +19,7 @@ export function useLocation(autoStart = true) {
       if (!navigator.geolocation) {
         const msg = 'Geolocation not supported';
         setError(msg);
+        setLocationUnavailable(true);
         reject(new Error(msg));
         return;
       }
@@ -32,14 +34,21 @@ export function useLocation(autoStart = true) {
           if (mountedRef.current) {
             setPosition(geo);
             setError(null);
+            setLocationUnavailable(false);
           }
           resolve(geo);
         },
         (err) => {
-          if (mountedRef.current) setError(err.message);
+          if (mountedRef.current) {
+            setError(err.message);
+            // Permission denied or position unavailable → mark unavailable
+            if (err.code === err.PERMISSION_DENIED || err.code === err.POSITION_UNAVAILABLE) {
+              setLocationUnavailable(true);
+            }
+          }
           reject(err);
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 5000 }
       );
     });
   }, []);
@@ -74,7 +83,7 @@ export function useLocation(autoStart = true) {
         }
       },
       (err) => { if (mountedRef.current) setError(err.message); },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 3000 }
     );
 
     watchIdRef.current = id;
@@ -98,5 +107,5 @@ export function useLocation(autoStart = true) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { position, error, watching, getCurrentLocation, startWatching };
+  return { position, error, watching, locationUnavailable, getCurrentLocation, startWatching };
 }

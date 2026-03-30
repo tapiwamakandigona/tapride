@@ -19,6 +19,20 @@ export default {
           950: '#142757',
         },
       },
+      keyframes: {
+        shimmer: {
+          '0%': { backgroundPosition: '200% 0' },
+          '100%': { backgroundPosition: '-200% 0' },
+        },
+        'slide-in-top': {
+          '0%': { transform: 'translateY(-100%)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+      },
+      animation: {
+        shimmer: 'shimmer 1.5s ease-in-out infinite',
+        'slide-in-top': 'slide-in-top 0.3s ease-out',
+      },
     },
   },
   plugins: [],

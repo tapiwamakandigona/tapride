@@ -97,6 +97,9 @@ export default function Register() {
         <p className="text-gray-500 dark:text-gray-400 mt-1">
           {step === 1 ? 'Choose how you want to use TapRide' : 'Fill in your details'}
         </p>
+        <p className="text-xs text-primary-600/70 dark:text-primary-400/70 mt-2 font-medium">
+          🇿🇼 Join 2,500+ riders in Zimbabwe
+        </p>
       </div>
 
       {/* Step indicator */}
@@ -379,7 +382,13 @@ export default function Register() {
       </div>
 
       {/* Footer */}
-      <div className="flex-shrink-0 py-4 text-center">
+      <div className="flex-shrink-0 py-4 text-center space-y-2">
+        <Link
+          to="/estimate"
+          className="text-primary-600 dark:text-primary-400 text-sm font-medium hover:underline"
+        >
+          💰 Estimate a fare without signing up
+        </Link>
         <p className="text-gray-400 dark:text-gray-600 text-xs">
           Made by Tapiwa Makandigona
         </p>

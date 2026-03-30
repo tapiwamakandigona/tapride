@@ -1,5 +1,6 @@
 import type { LocationCoords } from '../../types';
 import { calculateFare, formatFare, getTimeMultiplier, type RideType } from '../../lib/fare';
+import { mediumTap } from '../../lib/haptics';
 
 interface RideRequestFormProps {
   pickup: LocationCoords | null;
@@ -116,9 +117,10 @@ export default function RideRequestForm({
 
       {/* Submit */}
       <button
-        onClick={onRequestRide}
+        onClick={() => { mediumTap(); onRequestRide(); }}
         disabled={!pickup || !destination || loading}
-        className="w-full py-3 rounded-xl bg-primary-600 hover:bg-primary-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:text-gray-500 text-white font-semibold transition-colors shadow-lg shadow-primary-600/25"
+        className="w-full py-3 rounded-xl bg-primary-600 hover:bg-primary-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:text-gray-500 text-white font-semibold transition-colors shadow-lg shadow-primary-600/25 focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+        aria-label="Request a ride"
       >
         {loading ? (
           <span className="flex items-center justify-center gap-2">

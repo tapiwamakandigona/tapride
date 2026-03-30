@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useRide } from '../hooks/useRide';
 import { useLocation as useGeoLocation } from '../hooks/useLocation';
+import { useLoadingTimeout } from '../hooks/useLoadingTimeout';
+import RetryError from '../components/Layout/RetryError';
 import MapView from '../components/Map/MapView';
 import RideRequestCard from '../components/Ride/RideRequestCard';
 import BidResponseCard from '../components/Ride/BidResponseCard';
@@ -53,8 +55,9 @@ function vibrateDevice() {
 export default function DriverDashboard() {
   const navigate = useNavigate();
   const { profile, updateProfile } = useAuth();
-  const { currentRide, initializing, acceptRide, updateDriverLocation, fetchNearbyRequests } = useRide();
-  const { position, startWatching } = useGeoLocation(false); // Don't auto-start GPS; start when online
+  const { currentRide, initializing, initError, acceptRide, updateDriverLocation, fetchNearbyRequests, fetchActiveRide } = useRide();
+  const { position, startWatching } = useGeoLocation(false);
+  const { slow, timedOut } = useLoadingTimeout(initializing);
   const [isOnline, setIsOnline] = useState(profile?.is_online ?? false);
   const [nearbyRequests, setNearbyRequests] = useState<Ride[]>([]);
   const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
@@ -187,9 +190,13 @@ export default function DriverDashboard() {
 
   // Show loading spinner while useRide initializes
   if (initializing) {
+    if (timedOut || initError) {
+      return <RetryError message="Couldn't load your rides" onRetry={fetchActiveRide} />;
+    }
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 gap-2">
         <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+        {slow && <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Taking longer than expected…</p>}
       </div>
     );
   }
@@ -227,7 +234,8 @@ export default function DriverDashboard() {
         <button
           onClick={handleToggleOnline}
           disabled={toggleLoading}
-          className={`px-4 py-2 rounded-full font-semibold text-sm transition-all ${
+          aria-label={isOnline ? 'Go offline' : 'Go online'}
+          className={`px-4 py-2 rounded-full font-semibold text-sm transition-all focus:ring-2 focus:ring-primary-500 ${
             isOnline
               ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
               : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
@@ -321,7 +329,13 @@ export default function DriverDashboard() {
       )}
       {/* Verification prompt modal */}
       {showVerificationPrompt && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Verification required"
+          onKeyDown={(e) => { if (e.key === 'Escape') setShowVerificationPrompt(false); }}
+        >
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-xl">
             <div className="w-16 h-16 bg-yellow-100 dark:bg-yellow-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-yellow-600 dark:text-yellow-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

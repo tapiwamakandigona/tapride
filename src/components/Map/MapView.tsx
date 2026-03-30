@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, memo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import type { LocationCoords } from '../../types';
@@ -103,6 +103,7 @@ function RecenterButton() {
           type="button"
           onClick={handleRecenter}
           title="Re-center to my location"
+          aria-label="Re-center map to my location"
           style={{
             width: '36px',
             height: '36px',
@@ -126,7 +127,7 @@ function RecenterButton() {
   );
 }
 
-export default function MapView({
+export default memo(function MapView({
   center,
   userPosition,
   pickupPosition,
@@ -202,4 +203,4 @@ export default function MapView({
       </MapContainer>
     </div>
   );
-}
+});

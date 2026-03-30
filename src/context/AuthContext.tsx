@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
+import { withTimeout, withRetry } from '../lib/resilience';
 import type { Profile } from '../types';
 import type { User, Session } from '@supabase/supabase-js';
 
@@ -8,6 +9,9 @@ interface AuthContextType {
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
+  /** true when auth timed out or errored — lets UI show retry */
+  authError: boolean;
+  retryAuth: () => void;
   signUp: (email: string, password: string, metadata?: Record<string, string>) => Promise<{ error: string | null; userType?: string }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null; userType?: string }>;
   signOut: () => Promise<void>;
@@ -17,19 +21,31 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+/** Hard ceiling — loading MUST be false within this many ms, no matter what. */
+const AUTH_HARD_TIMEOUT_MS = 3000;
+/** Timeout for getSession call itself. */
+const GET_SESSION_TIMEOUT_MS = 2500;
+/** Timeout for profile fetch. */
+const PROFILE_TIMEOUT_MS = 2000;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(false);
+  const [initAttempt, setInitAttempt] = useState(0);
 
   const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      const { data, error } = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single(),
+        PROFILE_TIMEOUT_MS,
+      );
       if (error) {
         console.warn('[TapRide] Failed to fetch profile:', error.message);
         setProfile(null);
@@ -48,36 +64,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) await fetchProfile(user.id);
   }, [user, fetchProfile]);
 
-  useEffect(() => {
-    // Safety timeout: if loading doesn't resolve in 8s, force it off
-    const timeout = setTimeout(() => {
+  /** Core init — called on mount and on retry. */
+  const initAuth = useCallback(async () => {
+    setLoading(true);
+    setAuthError(false);
+
+    // Hard safety timeout — loading ALWAYS becomes false.
+    const hardTimeout = setTimeout(() => {
       setLoading((prev) => {
         if (prev) {
-          console.warn('[TapRide] Auth loading timed out — forcing loading=false');
+          console.warn('[TapRide] Auth hard timeout — forcing loading=false');
+          setAuthError(true);
           return false;
         }
         return prev;
       });
-    }, 8000);
+    }, AUTH_HARD_TIMEOUT_MS);
 
-    // Get initial session — wrapped in try/catch to ALWAYS finish loading
-    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
-      try {
-        setSession(s);
-        setUser(s?.user ?? null);
-        if (s?.user) {
-          await fetchProfile(s.user.id);
-        }
-      } catch (err) {
-        console.warn('[TapRide] Error during initial auth:', err);
-      } finally {
-        setLoading(false);
+    try {
+      // Race getSession against a timeout
+      const { data: { session: s } } = await withTimeout(
+        supabase.auth.getSession(),
+        GET_SESSION_TIMEOUT_MS,
+      );
+
+      setSession(s);
+      setUser(s?.user ?? null);
+
+      if (s?.user) {
+        // Profile fetch is non-blocking for loading — if it fails, user still gets through
+        await fetchProfile(s.user.id);
       }
-    }).catch((err) => {
-      console.warn('[TapRide] getSession failed:', err);
+    } catch (err) {
+      console.warn('[TapRide] Auth init failed:', err);
+      // Timed out or network error — clear everything, let app redirect to login
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      setAuthError(true);
+    } finally {
+      clearTimeout(hardTimeout);
       setLoading(false);
-    });
+    }
+  }, [fetchProfile]);
 
+  // Run init on mount and when retry is triggered
+  useEffect(() => {
+    initAuth();
+  }, [initAuth, initAttempt]);
+
+  // Listen for auth state changes (login/logout from other tabs, token refresh)
+  useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, s) => {
       try {
         setSession(s);
@@ -92,11 +129,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    return () => {
-      clearTimeout(timeout);
-      subscription.unsubscribe();
-    };
+    return () => { subscription.unsubscribe(); };
   }, [fetchProfile]);
+
+  const retryAuth = useCallback(() => {
+    setInitAttempt((n) => n + 1);
+  }, []);
 
   const signUp = async (email: string, password: string, metadata?: Record<string, string>) => {
     const { error, data } = await supabase.auth.signUp({
@@ -105,9 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       options: metadata ? { data: metadata } : undefined,
     });
 
-    if (error) {
-      return { error: error.message };
-    }
+    if (error) return { error: error.message };
 
     let userType = metadata?.user_type || 'rider';
 
@@ -126,10 +162,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (profileError) {
         console.error('[TapRide] Profile upsert failed after signup:', profileError.message);
-        // Don't fail signup entirely, but warn
       }
 
-      // Fetch the profile so it's immediately available
       const fetched = await fetchProfile(data.user.id);
       if (fetched) userType = fetched.user_type;
     }
@@ -139,11 +173,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const { error, data } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      return { error: error.message };
-    }
+    if (error) return { error: error.message };
 
-    // Immediately fetch profile and return userType for correct navigation
     let userType = 'rider';
     if (data.user) {
       const fetched = await fetchProfile(data.user.id);
@@ -161,7 +192,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateProfile = async (updates: Partial<Profile>) => {
     if (!user) return { error: 'Not authenticated' };
 
-    // Sanitize: only allow known fields
     const allowedFields = [
       'full_name', 'phone', 'avatar_url', 'user_type',
       'vehicle_make', 'vehicle_model', 'vehicle_color', 'license_plate',
@@ -177,15 +207,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const { error } = await supabase
-      .from('profiles')
-      .upsert(sanitized);
+    const { error } = await supabase.from('profiles').upsert(sanitized);
     if (!error) await fetchProfile(user.id);
     return { error: error?.message ?? null };
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, loading, signUp, signIn, signOut, updateProfile, refreshProfile }}>
+    <AuthContext.Provider value={{ user, session, profile, loading, authError, retryAuth, signUp, signIn, signOut, updateProfile, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

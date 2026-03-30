@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../hooks/useChat';
 import { useRide } from '../hooks/useRide';
+import { useLoadingTimeout } from '../hooks/useLoadingTimeout';
+import RetryError from '../components/Layout/RetryError';
 import { supabase } from '../lib/supabase';
 import ChatBubble from '../components/Chat/ChatBubble';
 import TypingIndicator from '../components/Chat/TypingIndicator';
@@ -11,7 +13,9 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
   const { currentRide, initializing } = useRide();
+  const { slow, timedOut } = useLoadingTimeout(initializing);
   const { messages, sendMessage, loading: chatLoading } = useChat(currentRide?.id ?? null);
+  const { slow: chatSlow, timedOut: chatTimedOut } = useLoadingTimeout(chatLoading && messages.length === 0);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
@@ -132,9 +136,13 @@ export default function ChatPage() {
 
   // Show loading while initializing
   if (initializing) {
+    if (timedOut) {
+      return <RetryError message="Couldn't load chat" onRetry={() => window.location.reload()} />;
+    }
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 gap-2">
         <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+        {slow && <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Taking longer than expected…</p>}
       </div>
     );
   }
@@ -165,9 +173,16 @@ export default function ChatPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
         {chatLoading && messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
-          </div>
+          chatTimedOut ? (
+            <div className="flex items-center justify-center h-full">
+              <RetryError message="Couldn't load messages" onRetry={() => window.location.reload()} showHome={false} />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full gap-2">
+              <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+              {chatSlow && <p className="text-sm text-gray-400">Taking longer than expected…</p>}
+            </div>
+          )
         ) : messages.length === 0 ? (
           <div className="flex items-center justify-center h-full text-center">
             <div>

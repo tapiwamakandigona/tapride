@@ -43,6 +43,15 @@ body {
   to { transform: translateY(0); opacity: 1; }
 }
 
+/* Shimmer skeleton gradient */
+.animate-shimmer {
+  background-image: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+  background-size: 200% 100%;
+}
+.dark .animate-shimmer {
+  background-image: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%);
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 4px;

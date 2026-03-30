@@ -1,0 +1,19 @@
+{
+  "name": "TapRide",
+  "short_name": "TapRide",
+  "description": "Fast, reliable rides at your fingertips",
+  "start_url": "/tapride/",
+  "scope": "/tapride/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#1a6df5",
+  "background_color": "#f9fafb",
+  "icons": [
+    {
+      "src": "/tapride/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

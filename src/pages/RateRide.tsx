@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { formatFare } from '../lib/fare';
+import { lightTap } from '../lib/haptics';
+import RatingTags from '../components/Ride/RatingTags';
 import type { Ride } from '../types';
 
 export default function RateRide() {
@@ -20,6 +22,7 @@ export default function RateRide() {
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const isDriver = profile?.user_type === 'driver';
   const homePath = isDriver ? '/driver' : '/rider';
@@ -75,6 +78,7 @@ export default function RateRide() {
         rated_id: ratedId,
         score: rating,
         comment: comment.trim() || null,
+        tags: selectedTags,
       });
 
       if (error) throw error;
@@ -191,7 +195,7 @@ export default function RateRide() {
               <button
                 key={star}
                 type="button"
-                onClick={() => setRating(star)}
+                onClick={() => { lightTap(); setRating(star); }}
                 onMouseEnter={() => setHoveredRating(star)}
                 onMouseLeave={() => setHoveredRating(0)}
                 className="transition-transform hover:scale-110"
@@ -216,8 +220,13 @@ export default function RateRide() {
             ))}
           </div>
 
+          {/* Rating Tags */}
+          <RatingTags isDriver={isDriver} selectedTags={selectedTags} onTagsChange={setSelectedTags} />
+
           {/* Comment */}
+          <label htmlFor="rate-comment" className="sr-only">Leave a comment</label>
           <textarea
+            id="rate-comment"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="Leave a comment (optional)"

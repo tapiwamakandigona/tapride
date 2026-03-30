@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { withTimeout } from '../lib/resilience';
 import type { Ride, RideStatus, DriverLocation } from '../types';
 import { haversineDistance } from '../lib/geo';
 import { calculateFare } from '../lib/fare';
@@ -18,6 +19,7 @@ export function useRide() {
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [initError, setInitError] = useState(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -32,32 +34,35 @@ export function useRide() {
       return;
     }
     try {
+      setInitError(false);
       const activeStatuses: RideStatus[] = ['requested', 'accepted', 'in_progress'];
-
-      // For drivers, check driver_id. For riders, check rider_id.
       const column = profile?.user_type === 'driver' ? 'driver_id' : 'rider_id';
 
-      // Try with profile join first
       let data: Ride | null = null;
-      const { data: joined, error: joinErr } = await supabase
-        .from('rides')
-        .select(RIDE_SELECT)
-        .eq(column, user.id)
-        .in('status', activeStatuses)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (joinErr) {
-        // Fallback without join
-        const { data: fallback } = await supabase
+      const { data: joined, error: joinErr } = await withTimeout(
+        supabase
           .from('rides')
-          .select(RIDE_SELECT_FALLBACK)
+          .select(RIDE_SELECT)
           .eq(column, user.id)
           .in('status', activeStatuses)
           .order('created_at', { ascending: false })
           .limit(1)
-          .maybeSingle();
+          .maybeSingle(),
+        5000,
+      );
+
+      if (joinErr) {
+        const { data: fallback } = await withTimeout(
+          supabase
+            .from('rides')
+            .select(RIDE_SELECT_FALLBACK)
+            .eq(column, user.id)
+            .in('status', activeStatuses)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          5000,
+        );
         data = fallback as Ride | null;
       } else {
         data = joined as Ride | null;
@@ -66,6 +71,7 @@ export function useRide() {
       if (mountedRef.current) setCurrentRide(data);
     } catch (err) {
       console.warn('[TapRide] fetchActiveRide error:', err);
+      if (mountedRef.current) setInitError(true);
     } finally {
       if (mountedRef.current) setInitializing(false);
     }
@@ -365,6 +371,7 @@ export function useRide() {
     driverLocation,
     loading,
     initializing,
+    initError,
     requestRide,
     acceptRide,
     startRide,

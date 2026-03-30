@@ -62,6 +62,9 @@ export default function Login() {
         <p className="text-gray-500 dark:text-gray-400 mt-1">
           Sign in to continue your journey
         </p>
+        <p className="text-xs text-primary-600/70 dark:text-primary-400/70 mt-2 font-medium">
+          🇿🇼 Join 2,500+ riders in Zimbabwe
+        </p>
       </div>
 
       {/* Form */}
@@ -134,7 +137,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-primary-400 text-white font-semibold py-3 rounded-xl transition-colors shadow-lg shadow-primary-600/25"
+            className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-primary-400 text-white font-semibold py-3 rounded-xl transition-colors shadow-lg shadow-primary-600/25 focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
           >
             {loading ? (
               <span className="flex items-center justify-center gap-2">
@@ -159,7 +162,13 @@ export default function Login() {
       </div>
 
       {/* Footer */}
-      <div className="flex-shrink-0 py-6 text-center">
+      <div className="flex-shrink-0 py-6 text-center space-y-2">
+        <Link
+          to="/estimate"
+          className="text-primary-600 dark:text-primary-400 text-sm font-medium hover:underline"
+        >
+          💰 Estimate a fare without signing in
+        </Link>
         <p className="text-gray-400 dark:text-gray-600 text-xs">
           Made by Tapiwa Makandigona
         </p>

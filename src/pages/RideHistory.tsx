@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLoadingTimeout } from '../hooks/useLoadingTimeout';
+import RetryError from '../components/Layout/RetryError';
 import { supabase } from '../lib/supabase';
 import { formatFare } from '../lib/fare';
+import RideHistorySkeleton from '../components/Ride/RideHistorySkeleton';
 import type { Ride } from '../types';
 
 export default function RideHistory() {
@@ -11,14 +14,15 @@ export default function RideHistory() {
   const [rides, setRides] = useState<Ride[]>([]);
   const [scheduledRides, setScheduledRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
+  const { slow, timedOut } = useLoadingTimeout(loading);
 
-  useEffect(() => {
+  const fetchRides = useCallback(async () => {
     if (!user) return;
+    setLoading(true);
+    setFetchError(false);
 
-    const fetchRides = async () => {
-      setLoading(true);
-
-      // Completed/cancelled rides
+    try {
       const { data } = await supabase
         .from('rides')
         .select('*')
@@ -29,7 +33,6 @@ export default function RideHistory() {
 
       setRides((data as Ride[]) || []);
 
-      // Scheduled upcoming rides
       const { data: scheduled } = await supabase
         .from('rides')
         .select('*')
@@ -41,11 +44,16 @@ export default function RideHistory() {
         .limit(10);
 
       setScheduledRides((scheduled as Ride[]) || []);
+    } catch {
+      setFetchError(true);
+    } finally {
       setLoading(false);
-    };
-
-    fetchRides();
+    }
   }, [user]);
+
+  useEffect(() => {
+    fetchRides();
+  }, [fetchRides]);
 
   const getStatusStyle = (status: string) => {
     switch (status) {
@@ -100,9 +108,14 @@ export default function RideHistory() {
       {/* Rides list */}
       <div className="px-4 pb-24">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
-          </div>
+          (timedOut || fetchError) ? (
+            <RetryError message="Couldn't load ride history" onRetry={fetchRides} />
+          ) : (
+            <>
+              <RideHistorySkeleton />
+              {slow && <p className="text-sm text-gray-400 dark:text-gray-500 text-center mt-2">Taking longer than expected…</p>}
+            </>
+          )
         ) : (
           <>
             {/* Scheduled rides section */}
@@ -152,7 +165,7 @@ export default function RideHistory() {
             {/* Past rides */}
             {rides.length === 0 ? (
               <div className="text-center py-12">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <circle cx="12" cy="12" r="10" />
                   <polyline points="12 6 12 12 16 14" />
                 </svg>
@@ -215,7 +228,7 @@ export default function RideHistory() {
                         {ride.status === 'completed' && (
                           <button
                             onClick={() => navigate('/ride/receipt', { state: { ride } })}
-                            className="text-xs text-primary-600 dark:text-primary-400 font-semibold hover:underline"
+                            className="text-xs text-primary-600 dark:text-primary-400 font-semibold hover:underline focus:ring-2 focus:ring-primary-500 rounded"
                           >
                             Receipt →
                           </button>

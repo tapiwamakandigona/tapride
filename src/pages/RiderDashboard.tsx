@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useRide } from '../hooks/useRide';
 import { useLocation as useGeoLocation } from '../hooks/useLocation';
+import { useLoadingTimeout } from '../hooks/useLoadingTimeout';
+import RetryError from '../components/Layout/RetryError';
 import { reverseGeocode, getRoute, type RouteResult } from '../lib/geo';
 import { haversineDistance } from '../lib/geo';
 import MapView from '../components/Map/MapView';
@@ -12,8 +14,10 @@ import RideTypeSelector from '../components/Ride/RideTypeSelector';
 import FareBidding from '../components/Ride/FareBidding';
 import PromoCodeInput from '../components/Ride/PromoCodeInput';
 import ScheduleRidePicker from '../components/Ride/ScheduleRidePicker';
+import FavoriteLocations from '../components/Map/FavoriteLocations';
 import type { LocationCoords } from '../types';
 import { calculateFare, type RideType } from '../lib/fare';
+import { success as hapticSuccess } from '../lib/haptics';
 
 import { supabase } from '../lib/supabase';
 
@@ -22,8 +26,9 @@ const MIN_RIDE_DISTANCE_KM = 0.1; // 100 meters minimum
 export default function RiderDashboard() {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
-  const { currentRide, driverLocation, initializing, requestRide, cancelRide, checkCancellationWarning, loading: rideLoading } = useRide();
+  const { currentRide, driverLocation, initializing, initError, requestRide, cancelRide, checkCancellationWarning, loading: rideLoading, fetchActiveRide } = useRide();
   const { position, error: locationError } = useGeoLocation();
+  const { slow, timedOut } = useLoadingTimeout(initializing);
   const [pickup, setPickup] = useState<LocationCoords | null>(null);
   const [destination, setDestination] = useState<LocationCoords | null>(null);
   const [pickupAddress, setPickupAddress] = useState('');
@@ -212,9 +217,13 @@ export default function RiderDashboard() {
 
   // Show loading spinner while useRide initializes
   if (initializing) {
+    if (timedOut || initError) {
+      return <RetryError message="Couldn't load your rides" onRetry={fetchActiveRide} />;
+    }
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 gap-2">
         <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+        {slow && <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Taking longer than expected…</p>}
       </div>
     );
   }
@@ -224,6 +233,11 @@ export default function RiderDashboard() {
   const isAccepted = currentRide?.status === 'accepted';
   const isInProgress = currentRide?.status === 'in_progress';
   const hasActiveRide = isAccepted || isInProgress;
+
+  // Haptic feedback when ride gets accepted
+  useEffect(() => {
+    if (isAccepted) hapticSuccess();
+  }, [isAccepted]);
 
   // Driver info when ride is accepted
   const driverName = currentRide?.driver?.full_name;
@@ -285,6 +299,10 @@ export default function RiderDashboard() {
             value={destAddress}
             onSelect={handleDestSearch}
           />
+          <FavoriteLocations onSelect={(lat, lng, address) => {
+            setDestination({ lat, lng });
+            setDestAddress(address);
+          }} />
         </div>
       )}
 
