@@ -8,7 +8,8 @@ export const FARE_CONFIG = {
 };
 
 export function calculateFare(distanceKm: number): number {
-  const fare = FARE_CONFIG.baseFare + FARE_CONFIG.perKmRate * distanceKm;
+  const clamped = Math.max(0, distanceKm);
+  const fare = FARE_CONFIG.baseFare + FARE_CONFIG.perKmRate * clamped;
   return Math.max(fare, FARE_CONFIG.minFare);
 }
 
