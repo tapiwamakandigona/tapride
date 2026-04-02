@@ -23,6 +23,9 @@ export function playNewRequestSound(): void {
 
     beep(880, 0, 0.5);
     beep(1100, 0.3, 0.8);
+
+    // Close context after sounds finish to free resources
+    setTimeout(() => ctx.close().catch(() => {}), 1000);
   } catch {
     // Not all browsers support AudioContext
   }

@@ -1,12 +1,17 @@
-const BASE_FARE = 2.0;
-const PER_KM_RATE = 0.5;
-const MIN_FARE = 3.0;
+// Fare configuration — override via environment or future remote config
+export const FARE_CONFIG = {
+  baseFare: Number(import.meta.env.VITE_FARE_BASE) || 2.0,
+  perKmRate: Number(import.meta.env.VITE_FARE_PER_KM) || 0.5,
+  minFare: Number(import.meta.env.VITE_FARE_MIN) || 3.0,
+  currency: import.meta.env.VITE_FARE_CURRENCY || 'USD',
+  symbol: import.meta.env.VITE_FARE_SYMBOL || '$',
+};
 
 export function calculateFare(distanceKm: number): number {
-  const fare = BASE_FARE + PER_KM_RATE * distanceKm;
-  return Math.max(fare, MIN_FARE);
+  const fare = FARE_CONFIG.baseFare + FARE_CONFIG.perKmRate * distanceKm;
+  return Math.max(fare, FARE_CONFIG.minFare);
 }
 
 export function formatFare(amount: number): string {
-  return `$${amount.toFixed(2)}`;
+  return `${FARE_CONFIG.symbol}${amount.toFixed(2)}`;
 }

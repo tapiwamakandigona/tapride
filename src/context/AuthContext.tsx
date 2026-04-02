@@ -17,6 +17,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+/** Max time to wait for initial auth before forcing loading=false */
+const AUTH_LOADING_TIMEOUT_MS = 8000;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -49,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, fetchProfile]);
 
   useEffect(() => {
-    // Safety timeout: if loading doesn't resolve in 8s, force it off
+    // Safety timeout: force loading off if auth hangs
     const timeout = setTimeout(() => {
       setLoading((prev) => {
         if (prev) {
@@ -58,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         return prev;
       });
-    }, 8000);
+    }, AUTH_LOADING_TIMEOUT_MS);
 
     // Get initial session — wrapped in try/catch to ALWAYS finish loading
     supabase.auth.getSession().then(async ({ data: { session: s } }) => {
