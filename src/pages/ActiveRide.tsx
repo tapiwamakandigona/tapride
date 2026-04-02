@@ -6,6 +6,8 @@ import { useLocation as useGeoLocation } from '../hooks/useLocation';
 import { getRoute, type RouteResult } from '../lib/geo';
 import MapView from '../components/Map/MapView';
 import { formatFare } from '../lib/fare';
+import { PageSpinner } from '../components/ui/Spinner';
+import AlertError from '../components/ui/AlertError';
 
 export default function ActiveRide() {
   const navigate = useNavigate();
@@ -70,13 +72,7 @@ export default function ActiveRide() {
   }, [isDriver, position, updateDriverLocation]);
 
   // Show loading while initializing
-  if (initializing) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (initializing) return <PageSpinner />;
 
   if (!currentRide) return null;
 
@@ -188,11 +184,7 @@ export default function ActiveRide() {
 
       {/* Bottom Panel */}
       <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-4 py-4">
-        {error && (
-          <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl p-2 mb-3">
-            <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
-          </div>
-        )}
+        {error && <AlertError message={error} className="mb-3" />}
 
         {/* Other party info */}
         {otherName && (

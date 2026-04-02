@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import ThemeToggle from './ThemeToggle';
+import ConfirmModal from '../ui/ConfirmModal';
 
 export default function Navbar() {
   const { profile, signOut } = useAuth();
@@ -90,32 +91,15 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* Logout confirmation modal */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-xl animate-fade-in">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-              Sign Out?
-            </h3>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mb-5">
-              Are you sure you want to sign out of TapRide?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowLogoutConfirm(false)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleLogout}
-                className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold transition-colors"
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title="Sign Out?"
+          message="Are you sure you want to sign out of TapRide?"
+          confirmLabel="Sign Out"
+          onConfirm={handleLogout}
+          onCancel={() => setShowLogoutConfirm(false)}
+          destructive
+        />
       )}
     </>
   );

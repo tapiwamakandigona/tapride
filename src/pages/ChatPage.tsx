@@ -5,6 +5,7 @@ import { useChat } from '../hooks/useChat';
 import { useRide } from '../hooks/useRide';
 import { supabase } from '../lib/supabase';
 import ChatBubble from '../components/Chat/ChatBubble';
+import Spinner, { PageSpinner } from '../components/ui/Spinner';
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -56,7 +57,7 @@ export default function ChatPage() {
       .then(({ data }) => {
         if (data?.full_name) setOtherPersonName(data.full_name);
       });
-  }, [currentRide, isDriver]);
+  }, [currentRide, isDriver]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,14 +82,7 @@ export default function ChatPage() {
 
   const otherName = otherPersonName || (isDriver ? 'Rider' : 'Driver');
 
-  // Show loading while initializing
-  if (initializing) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (initializing) return <PageSpinner />;
 
   return (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
@@ -117,7 +111,7 @@ export default function ChatPage() {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
         {chatLoading && messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+            <Spinner size="sm" />
           </div>
         ) : messages.length === 0 ? (
           <div className="flex items-center justify-center h-full text-center">

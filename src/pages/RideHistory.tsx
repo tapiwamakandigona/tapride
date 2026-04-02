@@ -2,28 +2,38 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { formatFare } from '../lib/fare';
+import AlertError from '../components/ui/AlertError';
+import Spinner from '../components/ui/Spinner';
 import type { Ride } from '../types';
 
 export default function RideHistory() {
   const { user } = useAuth();
   const [rides, setRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!user) return;
 
     const fetchRides = async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from('rides')
-        .select('*')
-        .or(`rider_id.eq.${user.id},driver_id.eq.${user.id}`)
-        .in('status', ['completed', 'cancelled'])
-        .order('created_at', { ascending: false })
-        .limit(50);
+      setError('');
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('rides')
+          .select('*')
+          .or(`rider_id.eq.${user.id},driver_id.eq.${user.id}`)
+          .in('status', ['completed', 'cancelled'])
+          .order('created_at', { ascending: false })
+          .limit(50);
 
-      setRides((data as Ride[]) || []);
-      setLoading(false);
+        if (fetchError) throw fetchError;
+        setRides((data as Ride[]) || []);
+      } catch {
+        setError('Failed to load ride history');
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchRides();
@@ -65,9 +75,10 @@ export default function RideHistory() {
 
       {/* Rides list */}
       <div className="px-4 pb-24">
+        {error && <AlertError message={error} className="mb-4" />}
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+            <Spinner size="sm" />
           </div>
         ) : rides.length === 0 ? (
           <div className="text-center py-12">

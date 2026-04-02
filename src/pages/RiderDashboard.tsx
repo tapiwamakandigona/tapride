@@ -8,6 +8,8 @@ import { haversineDistance } from '../lib/geo';
 import MapView from '../components/Map/MapView';
 import AddressSearch from '../components/Map/AddressSearch';
 import RideRequestForm from '../components/Ride/RideRequestForm';
+import Spinner from '../components/ui/Spinner';
+import AlertError from '../components/ui/AlertError';
 import type { LocationCoords } from '../types';
 
 const MIN_RIDE_DISTANCE_KM = 0.1; // 100 meters minimum
@@ -125,7 +127,7 @@ export default function RiderDashboard() {
   if (initializing) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+        <Spinner />
       </div>
     );
   }
@@ -229,11 +231,7 @@ export default function RiderDashboard() {
 
       {/* Bottom Panel */}
       <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-4 py-4 space-y-3">
-        {error && (
-          <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl p-2">
-            <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
-          </div>
-        )}
+        {error && <AlertError message={error} />}
 
         {isRequested ? (
           /* Waiting for driver */

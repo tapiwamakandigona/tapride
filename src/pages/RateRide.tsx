@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { formatFare } from '../lib/fare';
+import { PageSpinner } from '../components/ui/Spinner';
+import Footer from '../components/ui/Footer';
 import type { Ride } from '../types';
 
 export default function RateRide() {
@@ -46,8 +48,8 @@ export default function RateRide() {
         if (data) {
           setRide(data);
         }
-      } catch (err) {
-        console.warn('[TapRide] Failed to fetch last completed ride:', err);
+      } catch {
+        // Failed to fetch last completed ride
       } finally {
         setRideLoading(false);
       }
@@ -97,14 +99,7 @@ export default function RateRide() {
     navigate(homePath, { replace: true });
   };
 
-  // Loading state for DB fallback
-  if (rideLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (rideLoading) return <PageSpinner />;
 
   // If no ride data was found even after DB fallback, show message
   if (!ride) {
@@ -245,12 +240,7 @@ export default function RateRide() {
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="text-center py-4">
-        <p className="text-gray-400 dark:text-gray-600 text-xs">
-          Made by Tapiwa Makandigona
-        </p>
-      </div>
+      <Footer />
     </div>
   );
 }

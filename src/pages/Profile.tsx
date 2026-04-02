@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import AlertError from '../components/ui/AlertError';
+import ConfirmModal from '../components/ui/ConfirmModal';
+import Footer from '../components/ui/Footer';
 
 export default function Profile() {
   const { profile, updateProfile, signOut } = useAuth();
@@ -130,11 +133,7 @@ export default function Profile() {
               <p className="text-green-600 dark:text-green-400 text-sm">Profile updated successfully</p>
             </div>
           )}
-          {error && (
-            <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl p-3 mb-4">
-              <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
-            </div>
-          )}
+          {error && <AlertError message={error} className="mb-4" />}
 
           {/* Fields */}
           <div className="space-y-4">
@@ -303,40 +302,18 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Sign out confirmation modal */}
       {showSignOutConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-xl">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-              Sign Out
-            </h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              Are you sure you want to sign out?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowSignOutConfirm(false)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmSignOut}
-                className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold transition-colors"
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title="Sign Out"
+          message="Are you sure you want to sign out?"
+          confirmLabel="Sign Out"
+          onConfirm={confirmSignOut}
+          onCancel={() => setShowSignOutConfirm(false)}
+          destructive
+        />
       )}
 
-      {/* Footer */}
-      <div className="text-center py-6">
-        <p className="text-gray-400 dark:text-gray-600 text-xs">
-          Made by Tapiwa Makandigona
-        </p>
-      </div>
+      <Footer />
     </div>
   );
 }

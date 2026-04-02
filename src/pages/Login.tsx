@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import AlertError from '../components/ui/AlertError';
+import Spinner from '../components/ui/Spinner';
+import Footer from '../components/ui/Footer';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -67,11 +70,7 @@ export default function Login() {
       {/* Form */}
       <div className="flex-1 px-6">
         <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl p-3">
-              <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
-            </div>
-          )}
+          {error && <AlertError message={error} />}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
@@ -129,7 +128,7 @@ export default function Login() {
           >
             {loading ? (
               <span className="flex items-center justify-center gap-2">
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <Spinner size="sm" className="border-white/30 border-t-white" />
                 Signing in...
               </span>
             ) : (
@@ -150,10 +149,8 @@ export default function Login() {
       </div>
 
       {/* Footer */}
-      <div className="flex-shrink-0 py-6 text-center">
-        <p className="text-gray-400 dark:text-gray-600 text-xs">
-          Made by Tapiwa Makandigona
-        </p>
+      <div className="flex-shrink-0">
+        <Footer />
       </div>
     </div>
   );

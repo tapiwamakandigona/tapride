@@ -3,6 +3,9 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents 
 import L from 'leaflet';
 import type { LocationCoords } from '../../types';
 
+// Default center: Bulawayo, Zimbabwe
+const DEFAULT_CENTER: [number, number] = [-20.1325, 28.6265];
+
 // All markers use DivIcon — no CDN dependency
 const userIcon = L.divIcon({
   html: '<div style="background:#6366f1;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35)"></div>',
@@ -137,7 +140,7 @@ export default function MapView({
   className = '',
 }: MapViewProps) {
   const defaultCenter: [number, number] = center
-    || (userPosition ? [userPosition.lat, userPosition.lng] : [-20.1325, 28.6265]); // Bulawayo default
+    || (userPosition ? [userPosition.lat, userPosition.lng] : DEFAULT_CENTER);
 
   const [recenterTrigger] = useState(false);
 

@@ -1,4 +1,5 @@
 import { Component, type ReactNode, type ErrorInfo } from 'react';
+import Footer from './ui/Footer';
 
 interface Props {
   children: ReactNode;
@@ -63,9 +64,7 @@ export default class ErrorBoundary extends Component<Props, State> {
                 Reload
               </button>
             </div>
-            <p className="text-gray-400 dark:text-gray-600 text-xs mt-8">
-              Made by Tapiwa Makandigona
-            </p>
+            <Footer />
           </div>
         </div>
       );

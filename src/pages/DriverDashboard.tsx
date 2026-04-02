@@ -6,47 +6,10 @@ import { useLocation as useGeoLocation } from '../hooks/useLocation';
 import MapView from '../components/Map/MapView';
 import RideRequestCard from '../components/Ride/RideRequestCard';
 import { supabase } from '../lib/supabase';
+import { playNewRequestSound, vibrateDevice } from '../lib/notifications';
+import AlertError from '../components/ui/AlertError';
+import Spinner from '../components/ui/Spinner';
 import type { Ride } from '../types';
-
-// Play a beep sound using Web Audio API (no external files needed)
-function playNewRequestSound() {
-  try {
-    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = 880;
-    osc.type = 'sine';
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.5);
-    // Play a second beep
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.frequency.value = 1100;
-    osc2.type = 'sine';
-    gain2.gain.setValueAtTime(0.3, ctx.currentTime + 0.3);
-    gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
-    osc2.start(ctx.currentTime + 0.3);
-    osc2.stop(ctx.currentTime + 0.8);
-  } catch {
-    // Silently fail — not all browsers support AudioContext
-  }
-}
-
-function vibrateDevice() {
-  try {
-    if ('vibrate' in navigator) {
-      navigator.vibrate([200, 100, 200]);
-    }
-  } catch {
-    // Silently fail
-  }
-}
 
 export default function DriverDashboard() {
   const navigate = useNavigate();
@@ -180,7 +143,7 @@ export default function DriverDashboard() {
   if (initializing) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" />
+        <Spinner />
       </div>
     );
   }
@@ -265,11 +228,7 @@ export default function DriverDashboard() {
       {/* Ride Requests */}
       {isOnline && (
         <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 max-h-[40vh] overflow-y-auto">
-          {error && (
-            <div className="mx-4 mt-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl p-2">
-              <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
-            </div>
-          )}
+          {error && <AlertError message={error} className="mx-4 mt-3" />}
 
           {nearbyRequests.length === 0 ? (
             <div className="p-6 text-center">
