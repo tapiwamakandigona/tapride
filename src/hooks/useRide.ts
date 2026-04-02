@@ -18,6 +18,7 @@ async function queryRideWithFallback(
 ) {
   const { data, error } = await query();
   if (error) {
+    console.warn('[TapRide] queryRideWithFallback: primary query failed, using fallback:', error.message);
     const { data: fb } = await fallbackQuery();
     return fb;
   }
@@ -189,6 +190,7 @@ export function useRide() {
         .update({
           status: 'completed' as RideStatus,
           completed_at: new Date().toISOString(),
+          // TODO: Calculate actual fare from real trip distance/duration instead of estimate
           fare_final: Number(ride?.fare_estimate) || 0,
         })
         .eq('id', rideId);

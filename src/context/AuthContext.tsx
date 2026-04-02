@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Profile } from '../types';
 import type { User, Session } from '@supabase/supabase-js';
@@ -25,14 +25,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  // Counter to discard stale profile fetches from rapid auth state changes
+  const profileFetchId = useRef(0);
 
   const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
+    const fetchId = ++profileFetchId.current;
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
+      if (fetchId !== profileFetchId.current) return null; // stale
       if (error) {
         console.warn('[TapRide] Failed to fetch profile:', error.message);
         setProfile(null);
@@ -42,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return data;
     } catch (err) {
       console.warn('[TapRide] Profile fetch exception:', err);
-      setProfile(null);
+      if (fetchId === profileFetchId.current) setProfile(null);
       return null;
     }
   }, []);

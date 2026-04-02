@@ -1,4 +1,4 @@
-const USER_AGENT = 'TapRide/1.0 (tapiwamakandigona@github)';
+const USER_AGENT = import.meta.env.VITE_NOMINATIM_UA || 'TapRide/1.0';
 
 // Simple rate limiter: enforce min 1s between Nominatim requests
 let lastNominatimCall = 0;

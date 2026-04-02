@@ -36,7 +36,7 @@ export function useChat(rideId: string | null) {
   }, [rideId]);
 
   // Send a message
-  const sendMessage = async (content: string) => {
+  const sendMessage = useCallback(async (content: string) => {
     if (!user || !rideId || !content.trim()) return;
     const { error: sendErr } = await supabase.from('messages').insert({
       ride_id: rideId,
@@ -44,7 +44,7 @@ export function useChat(rideId: string | null) {
       content: content.trim(),
     });
     return { error: sendErr?.message ?? null };
-  };
+  }, [user, rideId]);
 
   // Subscribe to new messages — dedup by id
   useEffect(() => {
