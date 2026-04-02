@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { compareVersions } from './version-utils';
 
 export const APP_VERSION = '1.0.1';
 
@@ -20,16 +21,4 @@ export async function checkForUpdate(): Promise<{ required: boolean; latestVersi
   } catch {
     return { required: false, latestVersion: APP_VERSION };
   }
-}
-
-function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    const na = pa[i] || 0;
-    const nb = pb[i] || 0;
-    if (na > nb) return 1;
-    if (na < nb) return -1;
-  }
-  return 0;
 }

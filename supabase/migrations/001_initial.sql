@@ -82,6 +82,7 @@ CREATE INDEX IF NOT EXISTS idx_rides_rider_id ON public.rides(rider_id);
 CREATE INDEX IF NOT EXISTS idx_rides_driver_id ON public.rides(driver_id);
 CREATE INDEX IF NOT EXISTS idx_rides_status ON public.rides(status);
 CREATE INDEX IF NOT EXISTS idx_rides_created_at ON public.rides(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rides_status_driver ON public.rides(status) WHERE driver_id IS NULL;
 
 -- ============================================
 -- DRIVER LOCATIONS TABLE (real-time tracking)
@@ -94,6 +95,9 @@ CREATE TABLE IF NOT EXISTS public.driver_locations (
   speed DOUBLE PRECISION NOT NULL DEFAULT 0,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS idx_driver_locations_coords ON public.driver_locations(lat, lng);
+CREATE INDEX IF NOT EXISTS idx_driver_locations_updated ON public.driver_locations(updated_at);
 
 -- ============================================
 -- MESSAGES TABLE (in-app chat)
@@ -125,6 +129,9 @@ CREATE TABLE IF NOT EXISTS public.ratings (
 
 CREATE INDEX IF NOT EXISTS idx_ratings_rated_id ON public.ratings(rated_id);
 
+-- Index for online driver lookups
+CREATE INDEX IF NOT EXISTS idx_profiles_online_drivers ON public.profiles(user_type, is_online) WHERE user_type = 'driver' AND is_online = true;
+
 -- Auto-update profile rating on new rating
 CREATE OR REPLACE FUNCTION public.update_profile_rating()
 RETURNS TRIGGER AS $$
@@ -140,7 +147,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 DROP TRIGGER IF EXISTS on_rating_created ON public.ratings;
 CREATE TRIGGER on_rating_created
-  AFTER INSERT ON public.ratings
+  AFTER INSERT OR UPDATE ON public.ratings
   FOR EACH ROW EXECUTE FUNCTION public.update_profile_rating();
 
 -- ============================================
