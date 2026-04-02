@@ -11,10 +11,10 @@ import { useRideSubscription } from './useRideSubscription';
 const RIDE_SELECT = '*, rider:profiles!rides_rider_id_fkey(*), driver:profiles!rides_driver_id_fkey(*)';
 const RIDE_SELECT_FALLBACK = '*';
 
-/** Try query with profile join, fallback to plain select */
+/** Try query with profile join, fallback to plain select if FK join fails */
 async function queryRideWithFallback(
-  query: () => ReturnType<ReturnType<typeof supabase.from>['select']>,
-  fallbackQuery: () => ReturnType<ReturnType<typeof supabase.from>['select']>,
+  query: () => PromiseLike<{ data: any; error: any }>,
+  fallbackQuery: () => PromiseLike<{ data: any; error: any }>,
 ) {
   const { data, error } = await query();
   if (error) {
