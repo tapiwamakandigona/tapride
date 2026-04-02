@@ -1,0 +1,13 @@
+{
+  "appId": "com.tapiwa.tapride",
+  "appName": "TapRide",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0
+    }
+  }
+}
