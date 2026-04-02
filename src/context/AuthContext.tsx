@@ -17,16 +17,32 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-/** Max time to wait for initial auth before forcing loading=false */
+// [INTENT] Safety net — if Supabase auth hangs (network, extension interference), unblock the UI
+// [CONSTRAINT] 8s is generous enough for slow mobile networks but prevents infinite loading spinner
 const AUTH_LOADING_TIMEOUT_MS = 8000;
+
+// [INTENT] Allowlist prevents accidental write of sensitive or computed fields to profiles table
+const PROFILE_ALLOWED_FIELDS = [
+  'full_name', 'phone', 'avatar_url', 'user_type',
+  'vehicle_make', 'vehicle_model', 'vehicle_color', 'license_plate',
+  'is_online', 'current_lat', 'current_lng',
+] as const;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  // Counter to discard stale profile fetches from rapid auth state changes
+  const mountedRef = useRef(true);
+
+  // [INTENT] Monotonic counter discards stale profile fetches from overlapping auth events
+  // [EDGE-CASE] getSession and onAuthStateChange both trigger fetchProfile — second call must win
   const profileFetchId = useRef(0);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
     const fetchId = ++profileFetchId.current;
@@ -36,7 +52,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .select('*')
         .eq('id', userId)
         .single();
-      if (fetchId !== profileFetchId.current) return null; // stale
+
+      // [CONSTRAINT] Discard result if a newer fetch was issued while this one was in-flight
+      if (fetchId !== profileFetchId.current || !mountedRef.current) return null;
+
       if (error) {
         console.warn('[TapRide] Failed to fetch profile:', error.message);
         setProfile(null);
@@ -46,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return data;
     } catch (err) {
       console.warn('[TapRide] Profile fetch exception:', err);
-      if (fetchId === profileFetchId.current) setProfile(null);
+      if (fetchId === profileFetchId.current && mountedRef.current) setProfile(null);
       return null;
     }
   }, []);
@@ -56,7 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, fetchProfile]);
 
   useEffect(() => {
-    // Safety timeout: force loading off if auth hangs
+    // [INTENT] Force loading=false if auth initialization hangs
     const timeout = setTimeout(() => {
       setLoading((prev) => {
         if (prev) {
@@ -67,9 +86,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     }, AUTH_LOADING_TIMEOUT_MS);
 
-    // Get initial session — wrapped in try/catch to ALWAYS finish loading
+    // [INTENT] Bootstrap auth state from existing session (cookie/localStorage)
+    // [CONSTRAINT] Must ALWAYS set loading=false — wrapped in try/finally to guarantee it
     supabase.auth.getSession().then(async ({ data: { session: s } }) => {
       try {
+        if (!mountedRef.current) return;
         setSession(s);
         setUser(s?.user ?? null);
         if (s?.user) {
@@ -78,15 +99,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         console.warn('[TapRide] Error during initial auth:', err);
       } finally {
-        setLoading(false);
+        if (mountedRef.current) setLoading(false);
       }
     }).catch((err) => {
       console.warn('[TapRide] getSession failed:', err);
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     });
 
+    // [INTENT] React to sign-in, sign-out, token refresh events from Supabase
+    // [EDGE-CASE] SIGNED_OUT event with s=null — must clear profile
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, s) => {
       try {
+        if (!mountedRef.current) return;
         setSession(s);
         setUser(s?.user ?? null);
         if (s?.user) {
@@ -105,16 +129,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [fetchProfile]);
 
-  const signUp = async (email: string, password: string, metadata?: Record<string, string>) => {
+  // [INTENT] Register new user and create their profile row in one flow
+  // [CONSTRAINT] Profile upsert failure is non-fatal — user can still log in, profile will be created on next update
+  // [EDGE-CASE] Supabase may require email verification — data.user exists but session may be null
+  const signUp = useCallback(async (email: string, password: string, metadata?: Record<string, string>) => {
     const { error, data } = await supabase.auth.signUp({
       email,
       password,
       options: metadata ? { data: metadata } : undefined,
     });
 
-    if (error) {
-      return { error: error.message };
-    }
+    if (error) return { error: error.message };
 
     let userType = metadata?.user_type || 'rider';
 
@@ -133,24 +158,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (profileError) {
         console.error('[TapRide] Profile upsert failed after signup:', profileError.message);
-        // Don't fail signup entirely, but warn
       }
 
-      // Fetch the profile so it's immediately available
       const fetched = await fetchProfile(data.user.id);
       if (fetched) userType = fetched.user_type;
     }
 
     return { error: null, userType };
-  };
+  }, [fetchProfile]);
 
-  const signIn = async (email: string, password: string) => {
+  // [INTENT] Sign in and immediately return userType for navigation routing
+  // [EDGE-CASE] Profile fetch may fail on first login if profile row doesn't exist yet — defaults to 'rider'
+  const signIn = useCallback(async (email: string, password: string) => {
     const { error, data } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      return { error: error.message };
-    }
+    if (error) return { error: error.message };
 
-    // Immediately fetch profile and return userType for correct navigation
     let userType = 'rider';
     if (data.user) {
       const fetched = await fetchProfile(data.user.id);
@@ -158,35 +180,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     return { error: null, userType };
-  };
+  }, [fetchProfile]);
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setProfile(null);
-  };
+  // [INTENT] Clear all auth state — Supabase handles token cleanup
+  // [EDGE-CASE] signOut may throw on network failure — catch to ensure local state clears
+  const signOut = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('[TapRide] signOut error:', err);
+    }
+    if (mountedRef.current) {
+      setProfile(null);
+      setUser(null);
+      setSession(null);
+    }
+  }, []);
 
-  const updateProfile = async (updates: Partial<Profile>) => {
+  // [INTENT] Partial profile update with field allowlist to prevent injection of computed/admin fields
+  // [CONSTRAINT] Upsert requires id — always included from authenticated user
+  const updateProfile = useCallback(async (updates: Partial<Profile>) => {
     if (!user) return { error: 'Not authenticated' };
 
-    // Sanitize: only allow known fields
-    const allowedFields = [
-      'full_name', 'phone', 'avatar_url', 'user_type',
-      'vehicle_make', 'vehicle_model', 'vehicle_color', 'license_plate',
-      'is_online', 'current_lat', 'current_lng',
-    ];
     const sanitized: Record<string, unknown> = { id: user.id };
-    for (const key of allowedFields) {
+    for (const key of PROFILE_ALLOWED_FIELDS) {
       if (key in updates) {
         sanitized[key] = (updates as Record<string, unknown>)[key];
       }
     }
 
-    const { error } = await supabase
-      .from('profiles')
-      .upsert(sanitized);
-    if (!error) await fetchProfile(user.id);
+    const { error } = await supabase.from('profiles').upsert(sanitized);
+    if (!error && mountedRef.current) await fetchProfile(user.id);
     return { error: error?.message ?? null };
-  };
+  }, [user, fetchProfile]);
 
   return (
     <AuthContext.Provider value={{ user, session, profile, loading, signUp, signIn, signOut, updateProfile, refreshProfile }}>
@@ -195,6 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// [INTENT] Typed hook with runtime guard — crashes fast if used outside AuthProvider
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {

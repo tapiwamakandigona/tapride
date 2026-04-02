@@ -7,65 +7,70 @@ import { calculateFare } from '../lib/fare';
 import { useDriverLocation } from './useDriverLocation';
 import { useRideSubscription } from './useRideSubscription';
 
-// Select with joined rider/driver profiles
+// [INTENT] Supabase select strings — primary includes profile joins for UI display
+// [EDGE-CASE] FK join names may not match if migrations differ — fallback strips joins
 const RIDE_SELECT = '*, rider:profiles!rides_rider_id_fkey(*), driver:profiles!rides_driver_id_fkey(*)';
 const RIDE_SELECT_FALLBACK = '*';
 
-/** Try query with profile join, fallback to plain select if FK join fails */
+// [INTENT] Try profile-joined query first, fall back to plain select on FK mismatch
+// [EDGE-CASE] Fallback query may also fail — caller must handle null/empty results
 async function queryRideWithFallback(
   query: () => PromiseLike<{ data: any; error: any }>,
   fallbackQuery: () => PromiseLike<{ data: any; error: any }>,
 ) {
   const { data, error } = await query();
   if (error) {
-    console.warn('[TapRide] queryRideWithFallback: primary query failed, using fallback:', error.message);
-    const { data: fb } = await fallbackQuery();
+    console.warn('[TapRide] Primary ride query failed, trying fallback:', error.message);
+    const { data: fb, error: fbErr } = await fallbackQuery();
+    if (fbErr) console.warn('[TapRide] Fallback query also failed:', fbErr.message);
     return fb;
   }
   return data;
 }
 
+// [INTENT] Core ride lifecycle hook — CRUD operations + realtime sync for the active ride
+// [CONSTRAINT] Only one ride can be active per user at a time (enforced by status filter)
+// [CONSTRAINT] All state mutations check mountedRef to prevent setState-after-unmount
 export function useRide() {
   const { user, profile } = useAuth();
   const [currentRide, setCurrentRide] = useState<Ride | null>(null);
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const mountedRef = useRef(true);
-  // Ref to avoid stale closure in completeRide
-  const currentRideRef = useRef<Ride | null>(null);
 
-  useEffect(() => {
-    currentRideRef.current = currentRide;
-  }, [currentRide]);
+  // [INTENT] Ref mirrors currentRide state to avoid stale closures in async callbacks
+  // [EDGE-CASE] completeRide reads fare_estimate — without ref it captures stale value from render
+  const currentRideRef = useRef<Ride | null>(null);
+  useEffect(() => { currentRideRef.current = currentRide; }, [currentRide]);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
-  // Driver location (extracted hook)
   const { driverLocation, updateDriverLocation, subscribeToDriverLocation } =
     useDriverLocation(user?.id);
 
-  // Ride subscription handler
+  // [INTENT] Handle realtime ride updates — merge into state, preserving joined profile data
+  // [EDGE-CASE] Completed/cancelled rides still update state so the UI can show final status before clearing
   const handleRideUpdate = useCallback((updated: Ride) => {
+    if (!mountedRef.current) return;
     if (updated.status === 'cancelled' || updated.status === 'completed') {
-      if (mountedRef.current) setCurrentRide(updated);
+      setCurrentRide(updated);
     } else {
-      if (mountedRef.current) {
-        setCurrentRide((prev) =>
-          prev ? { ...prev, ...updated, rider: prev.rider, driver: prev.driver } : updated
-        );
-      }
+      setCurrentRide((prev) =>
+        prev ? { ...prev, ...updated, rider: prev.rider, driver: prev.driver } : updated,
+      );
     }
   }, []);
 
   const { subscribeToRide } = useRideSubscription(handleRideUpdate);
 
-  // Fetch active ride for current user
+  // [INTENT] Find the user's active ride on mount or after auth changes
+  // [CONSTRAINT] Checks driver_id or rider_id based on user_type to support dual-role accounts
   const fetchActiveRide = useCallback(async () => {
     if (!user) {
-      if (mountedRef.current) setInitializing(false);
+      if (mountedRef.current) { setCurrentRide(null); setInitializing(false); }
       return;
     }
     try {
@@ -89,7 +94,9 @@ export function useRide() {
     }
   }, [user, profile?.user_type]);
 
-  // Request a ride (rider)
+  // [INTENT] Create a new ride request with fare estimate
+  // [CONSTRAINT] Uses OSRM route distance when available, haversine as fallback
+  // [EDGE-CASE] Profile join on re-fetch may fail — falls back to plain inserted row
   const requestRide = useCallback(async (
     pickupLat: number, pickupLng: number, pickupAddress: string,
     destLat: number, destLng: number, destAddress: string,
@@ -118,6 +125,7 @@ export function useRide() {
       if (insertErr) throw new Error(insertErr.message);
       if (!inserted) throw new Error('Failed to create ride');
 
+      // [INTENT] Re-fetch with joins for richer UI data (rider/driver profiles)
       const { data: withProfiles } = await supabase
         .from('rides').select(RIDE_SELECT).eq('id', inserted.id).single();
 
@@ -129,7 +137,8 @@ export function useRide() {
     }
   }, [user]);
 
-  // Accept a ride (driver)
+  // [INTENT] Driver claims a ride — optimistic lock via status='requested' guard
+  // [EDGE-CASE] Two drivers tap accept simultaneously — PGRST116 (no rows returned) means another driver won
   const acceptRide = useCallback(async (rideId: string) => {
     if (!user) throw new Error('Not authenticated');
     if (mountedRef.current) setLoading(true);
@@ -165,7 +174,7 @@ export function useRide() {
     }
   }, [user]);
 
-  // Start ride
+  // [INTENT] Transition ride to in_progress when driver confirms pickup
   const startRide = useCallback(async (rideId: string) => {
     if (mountedRef.current) setLoading(true);
     try {
@@ -180,7 +189,9 @@ export function useRide() {
     }
   }, [fetchActiveRide]);
 
-  // Complete ride — uses ref to avoid stale closure
+  // [INTENT] Mark ride as completed and return the ride data for the rating screen
+  // [CONSTRAINT] Uses currentRideRef (not state) to avoid stale closure capturing old fare_estimate
+  // [EDGE-CASE] currentRideRef.current may be null if ride was cancelled via realtime before driver tapped complete
   const completeRide = useCallback(async (rideId: string): Promise<Ride | null> => {
     if (mountedRef.current) setLoading(true);
     try {
@@ -190,7 +201,6 @@ export function useRide() {
         .update({
           status: 'completed' as RideStatus,
           completed_at: new Date().toISOString(),
-          // TODO: Calculate actual fare from real trip distance/duration instead of estimate
           fare_final: Number(ride?.fare_estimate) || 0,
         })
         .eq('id', rideId);
@@ -204,7 +214,8 @@ export function useRide() {
     }
   }, []);
 
-  // Cancel ride
+  // [INTENT] Cancel a ride from either side (rider or driver)
+  // [EDGE-CASE] Ride may already be cancelled by the other party — update still succeeds (idempotent)
   const cancelRide = useCallback(async (rideId: string) => {
     if (mountedRef.current) setLoading(true);
     try {
@@ -221,32 +232,40 @@ export function useRide() {
 
   const clearCurrentRide = useCallback(() => { setCurrentRide(null); }, []);
 
-  // Fetch nearby ride requests (driver)
+  // [INTENT] Load available ride requests for driver dashboard
+  // [CONSTRAINT] Only shows rides with no driver assigned and status=requested
   const fetchNearbyRequests = useCallback(async (): Promise<Ride[]> => {
-    const data = await queryRideWithFallback(
-      () => supabase.from('rides').select(RIDE_SELECT)
-        .eq('status', 'requested').is('driver_id', null)
-        .order('created_at', { ascending: false }).limit(20),
-      () => supabase.from('rides').select('*')
-        .eq('status', 'requested').is('driver_id', null)
-        .order('created_at', { ascending: false }).limit(20),
-    );
-    return (data as Ride[]) || [];
+    try {
+      const data = await queryRideWithFallback(
+        () => supabase.from('rides').select(RIDE_SELECT)
+          .eq('status', 'requested').is('driver_id', null)
+          .order('created_at', { ascending: false }).limit(20),
+        () => supabase.from('rides').select('*')
+          .eq('status', 'requested').is('driver_id', null)
+          .order('created_at', { ascending: false }).limit(20),
+      );
+      return (data as Ride[]) || [];
+    } catch (err) {
+      console.warn('[TapRide] fetchNearbyRequests error:', err);
+      return [];
+    }
   }, []);
 
-  // Auto-subscribe to ride updates
+  // [INTENT] Auto-subscribe to realtime updates for the active ride
+  // [CONSTRAINT] Effect cleanup removes channel — prevents stale subscriptions after ride changes
   useEffect(() => {
     if (!currentRide?.id) return;
     return subscribeToRide(currentRide.id);
   }, [currentRide?.id, subscribeToRide]);
 
-  // Auto-subscribe to driver location when rider has active ride
+  // [INTENT] Rider auto-subscribes to driver location when a driver is assigned
+  // [EDGE-CASE] User logs out mid-ride — profile becomes null, subscription must not fire
   useEffect(() => {
     if (!currentRide?.driver_id || profile?.user_type !== 'rider') return;
     return subscribeToDriverLocation(currentRide.driver_id);
   }, [currentRide?.driver_id, profile?.user_type, subscribeToDriverLocation]);
 
-  // Fetch active ride on mount
+  // [INTENT] Restore active ride state on mount (page refresh, app reopen)
   useEffect(() => { fetchActiveRide(); }, [fetchActiveRide]);
 
   return {

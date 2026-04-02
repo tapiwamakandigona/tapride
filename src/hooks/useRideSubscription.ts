@@ -2,13 +2,11 @@ import { useCallback, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Ride } from '../types';
 
-/**
- * Hook for realtime ride subscription.
- * Extracted from useRide for separation of concerns.
- */
-export function useRideSubscription(
-  onUpdate: (ride: Ride) => void,
-) {
+// [INTENT] Isolated realtime subscription for ride row updates
+// [CONSTRAINT] onUpdate callback must be stable (useCallback) to avoid subscription churn
+// [EDGE-CASE] Supabase channel may receive updates after component unmounts — mountedRef guards setState
+
+export function useRideSubscription(onUpdate: (ride: Ride) => void) {
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -16,6 +14,8 @@ export function useRideSubscription(
     return () => { mountedRef.current = false; };
   }, []);
 
+  // [INTENT] Subscribe to postgres_changes for a specific ride row
+  // [CONSTRAINT] Returns cleanup function that removes the channel — must be called on effect teardown
   const subscribeToRide = useCallback((rideId: string) => {
     const channel = supabase
       .channel(`ride-${rideId}`)

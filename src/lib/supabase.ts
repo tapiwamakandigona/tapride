@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
+// [INTENT] Create singleton Supabase client from environment variables
+// [CONSTRAINT] Fail loudly at module load if credentials missing — prevents silent auth failures
+// [EDGE-CASE] Vite injects env at build time; missing vars produce empty string, not undefined
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 

@@ -2,10 +2,10 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import type { DriverLocation } from '../types';
 
-/**
- * Hook for subscribing to and updating driver location.
- * Extracted from useRide for separation of concerns.
- */
+// [INTENT] Isolated driver location state — subscribe to realtime updates + push location to server
+// [CONSTRAINT] Extracted from useRide to keep ride CRUD separate from location tracking
+// [EDGE-CASE] userId may be undefined if user logs out — all operations must guard against it
+
 export function useDriverLocation(userId: string | undefined) {
   const [driverLocation, setDriverLocation] = useState<DriverLocation | null>(null);
   const mountedRef = useRef(true);
@@ -15,8 +15,10 @@ export function useDriverLocation(userId: string | undefined) {
     return () => { mountedRef.current = false; };
   }, []);
 
+  // [INTENT] Push current driver GPS to server for rider-side tracking
+  // [EDGE-CASE] Upsert may fail if driver_locations table has RLS restrictions — log but don't throw
   const updateDriverLocation = useCallback(async (
-    lat: number, lng: number, heading?: number | null, speed?: number | null
+    lat: number, lng: number, heading?: number | null, speed?: number | null,
   ) => {
     if (!userId) return;
     const { error } = await supabase.from('driver_locations').upsert({
@@ -32,14 +34,26 @@ export function useDriverLocation(userId: string | undefined) {
     }
   }, [userId]);
 
+  // [INTENT] Subscribe to realtime location changes for a specific driver
+  // [CONSTRAINT] Returns cleanup function — caller (useEffect) must invoke on teardown
+  // [EDGE-CASE] Initial fetch may return null if driver hasn't shared location yet
   const subscribeToDriverLocation = useCallback((driverId: string) => {
-    // Fetch initial location
+    // [INTENT] Seed state with current location before subscription delivers first event
     supabase
       .from('driver_locations')
       .select('*')
       .eq('driver_id', driverId)
       .single()
-      .then(({ data }) => { if (data && mountedRef.current) setDriverLocation(data); });
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn('[TapRide] Initial driver location fetch failed:', error.message);
+        }
+        if (data && mountedRef.current) setDriverLocation(data);
+      })
+      .catch((err) => {
+        // [EDGE-CASE] Unhandled promise rejection if supabase client throws
+        console.warn('[TapRide] Driver location fetch exception:', err);
+      });
 
     const channel = supabase
       .channel(`driver-loc-${driverId}`)

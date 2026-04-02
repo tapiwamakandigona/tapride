@@ -1,11 +1,13 @@
-/**
- * Audio/haptic notification utilities for ride events.
- */
+// [INTENT] Audio/haptic feedback for ride events (new request, status changes)
+// [CONSTRAINT] Must degrade gracefully — many mobile webviews restrict AudioContext and vibration
+// [EDGE-CASE] iOS Safari requires AudioContext creation inside a user gesture; this may silently fail for programmatic calls
 
-/** Play a two-tone beep using Web Audio API */
+/** Play a two-tone ascending beep to signal a new ride request */
 export function playNewRequestSound(): void {
   try {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const AudioCtx = window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
     const ctx = new AudioCtx();
 
     const beep = (freq: number, startAt: number, endAt: number) => {
@@ -24,20 +26,21 @@ export function playNewRequestSound(): void {
     beep(880, 0, 0.5);
     beep(1100, 0.3, 0.8);
 
-    // Close context after sounds finish to free resources
-    setTimeout(() => ctx.close().catch(() => {}), 1000);
+    // [INTENT] Free AudioContext resources after playback completes
+    // [CONSTRAINT] Must wait longer than the last beep endAt (0.8s) before closing
+    setTimeout(() => ctx.close().catch(() => {}), 1200);
   } catch {
-    // Not all browsers support AudioContext
+    // [EDGE-CASE] Browser doesn't support AudioContext at all — silent no-op
   }
 }
 
-/** Vibrate the device if supported */
+/** Vibrate device if the Vibration API is available */
 export function vibrateDevice(): void {
   try {
     if ('vibrate' in navigator) {
       navigator.vibrate([200, 100, 200]);
     }
   } catch {
-    // Silently fail
+    // [EDGE-CASE] Some Capacitor/webview environments throw on vibrate
   }
 }
