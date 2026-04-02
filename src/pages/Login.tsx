@@ -25,7 +25,7 @@ export default function Login() {
         setError(result.error);
         return;
       }
-      // Use the userType returned from signIn (profile is fetched inside signIn)
+      // [INTENT] Route to correct dashboard based on user role after successful login
       const path = result.userType === 'driver' ? '/driver' : '/rider';
       navigate(path, { replace: true });
     } catch {

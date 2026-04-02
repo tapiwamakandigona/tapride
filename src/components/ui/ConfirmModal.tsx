@@ -18,7 +18,8 @@ export default function ConfirmModal({
   destructive = false,
 }: ConfirmModalProps) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    // [Z-INDEX] z-[60] — must stack above Navbar (z-50) to receive clicks
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-xl">
         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
           {title}

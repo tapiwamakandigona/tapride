@@ -24,7 +24,7 @@ export default function DriverDashboard() {
   const prevRequestCount = useRef(0);
   const loadingRequestsRef = useRef(false);
 
-  // Start watching location when online
+  // [INTENT] Only consume battery for GPS when driver is actively accepting rides
   useEffect(() => {
     if (isOnline) {
       const stopWatching = startWatching();
@@ -32,14 +32,17 @@ export default function DriverDashboard() {
     }
   }, [isOnline, startWatching]);
 
-  // Update driver location in DB when position changes (while online)
+  // [INTENT] Push driver coordinates to Supabase for rider-side tracking
+  // [CONSTRAINT] Only while online — offline drivers shouldn't appear on rider maps
   useEffect(() => {
     if (isOnline && position) {
       updateDriverLocation(position.lat, position.lng, position.heading, position.speed);
     }
   }, [isOnline, position, updateDriverLocation]);
 
-  // Fetch nearby ride requests when online
+  // [INTENT] Poll + realtime subscribe for ride requests within range
+  // [CONSTRAINT] 8s polling as safety net; realtime channel handles instant updates
+  // [EDGE-CASE] Multiple rapid fetches can fire — loadingRequestsRef debounces
   useEffect(() => {
     if (!isOnline) {
       setNearbyRequests([]);
@@ -48,14 +51,15 @@ export default function DriverDashboard() {
     }
 
     const loadRequests = async () => {
-      // Debounce guard — skip if already loading
+      // [INTENT] Prevent concurrent fetches from stacking (realtime + interval can overlap)
       if (loadingRequestsRef.current) return;
       loadingRequestsRef.current = true;
       try {
         const requests = await fetchNearbyRequests();
         const prevCount = prevRequestCount.current;
 
-        // Play sound/vibrate OUTSIDE setState
+        // [INTENT] Alert driver to new requests via audio/haptic — critical for engagement
+        // [CONSTRAINT] Only play on transition from 0→N or N→N+1, not on every poll
         if (requests.length > 0 && prevCount === 0) {
           playNewRequestSound();
           vibrateDevice();
@@ -67,7 +71,7 @@ export default function DriverDashboard() {
         prevRequestCount.current = requests.length;
         setNearbyRequests(requests);
       } catch {
-        // Silently fail, will retry
+        // [EDGE-CASE] Network flake during poll — silently retry on next interval
       } finally {
         loadingRequestsRef.current = false;
       }
@@ -76,7 +80,8 @@ export default function DriverDashboard() {
     loadRequests();
     const interval = setInterval(loadRequests, 8000);
 
-    // Subscribe to new ride requests in realtime
+    // [INTENT] Realtime channel catches new rides faster than polling
+    // [CONSTRAINT] Both INSERT and UPDATE filters needed — ride may be re-requested after cancellation
     const channel = supabase
       .channel('new-ride-requests')
       .on(
@@ -108,7 +113,7 @@ export default function DriverDashboard() {
       setIsOnline(newStatus);
 
       if (!newStatus) {
-        // Going offline: remove from driver_locations
+        // [INTENT] Going offline: clean up driver_locations so riders don't see stale pins
         await supabase
           .from('driver_locations')
           .delete()
@@ -126,12 +131,12 @@ export default function DriverDashboard() {
     setError('');
     try {
       await acceptRide(rideId);
-      // After accepting, navigate to active ride
+      // [INTENT] Navigate to active ride view after successful accept
       navigate('/ride/active');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to accept ride';
       setError(message);
-      // Refresh the list since the ride may have been taken
+      // [EDGE-CASE] Accept failed (another driver got it) — refresh list to remove stale card
       const requests = await fetchNearbyRequests();
       setNearbyRequests(requests);
     } finally {
@@ -139,7 +144,7 @@ export default function DriverDashboard() {
     }
   };
 
-  // Show loading spinner while useRide initializes
+  // [INTENT] Block render until useRide resolves — prevents flash of empty dashboard
   if (initializing) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -148,7 +153,8 @@ export default function DriverDashboard() {
     );
   }
 
-  // Active ride banner (instead of auto-redirect)
+  // [INTENT] Non-blocking banner for rides in progress — driver can still see new requests
+  // [CONSTRAINT] Deliberately not auto-redirecting to avoid breaking the request list flow
   const hasActiveRide = currentRide && (currentRide.status === 'accepted' || currentRide.status === 'in_progress');
 
   return (
@@ -169,7 +175,9 @@ export default function DriverDashboard() {
       )}
 
       {/* Header */}
-      <div className="px-4 pt-4 pb-2 bg-white dark:bg-gray-900 z-10 flex items-center justify-between">
+      {/* [INTENT] Header with driver name + online/offline toggle */}
+      {/* [Z-INDEX] relative z-20 — must sit above map (Leaflet's internal z-indexes reach 400+) */}
+      <div className="relative px-4 pt-4 pb-2 bg-white dark:bg-gray-900 z-20 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">
             Hi, {profile?.full_name?.split(' ')[0] || 'Driver'}
@@ -192,7 +200,8 @@ export default function DriverDashboard() {
       </div>
 
       {/* Map */}
-      <div className="flex-1 relative">
+      {/* [Z-INDEX] isolate creates stacking context — contains Leaflet's z-indexes within the map div */}
+      <div className="flex-1 relative isolate">
         <MapView
           center={position ? [position.lat, position.lng] : undefined}
           userPosition={position ? { lat: position.lat, lng: position.lng } : undefined}
@@ -200,7 +209,8 @@ export default function DriverDashboard() {
         />
 
         {!isOnline && (
-          <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-[1000]">
+          /* [Z-INDEX] z-10 within isolated map container — covers map but not sibling panels */
+          <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-10">
             <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 text-center shadow-xl mx-4">
               <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-3">
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -227,7 +237,8 @@ export default function DriverDashboard() {
 
       {/* Ride Requests */}
       {isOnline && (
-        <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 max-h-[40vh] overflow-y-auto">
+        /* [Z-INDEX] relative z-20 — ride request cards must be clickable above map */
+      <div className="relative bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 max-h-[40vh] overflow-y-auto z-20">
           {error && <AlertError message={error} className="mx-4 mt-3" />}
 
           {nearbyRequests.length === 0 ? (
@@ -242,7 +253,7 @@ export default function DriverDashboard() {
                 No ride requests nearby
               </p>
               <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">
-                Stay online — new requests will appear here automatically
+                Stay online - new requests will appear here automatically
               </p>
             </div>
           ) : (

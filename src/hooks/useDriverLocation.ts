@@ -39,21 +39,24 @@ export function useDriverLocation(userId: string | undefined) {
   // [EDGE-CASE] Initial fetch may return null if driver hasn't shared location yet
   const subscribeToDriverLocation = useCallback((driverId: string) => {
     // [INTENT] Seed state with current location before subscription delivers first event
-    supabase
-      .from('driver_locations')
-      .select('*')
-      .eq('driver_id', driverId)
-      .single()
-      .then(({ data, error }) => {
+    // [CONSTRAINT] Supabase query returns PromiseLike (not full Promise), so .catch() is unavailable.
+    //   Wrap in async IIFE with try/catch to handle both query errors and thrown exceptions.
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('driver_locations')
+          .select('*')
+          .eq('driver_id', driverId)
+          .single();
         if (error) {
           console.warn('[TapRide] Initial driver location fetch failed:', error.message);
         }
         if (data && mountedRef.current) setDriverLocation(data);
-      })
-      .catch((err) => {
+      } catch (err) {
         // [EDGE-CASE] Unhandled promise rejection if supabase client throws
         console.warn('[TapRide] Driver location fetch exception:', err);
-      });
+      }
+    })();
 
     const channel = supabase
       .channel(`driver-loc-${driverId}`)

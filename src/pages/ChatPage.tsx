@@ -18,24 +18,26 @@ export default function ChatPage() {
   const [otherPersonName, setOtherPersonName] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom
+  // [INTENT] Keep chat scrolled to newest message as they arrive in real-time
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Redirect if no active ride (only after initializing is done)
+  // [INTENT] Prevent chat screen from rendering without a ride context
+  // [CONSTRAINT] Wait for initializing to finish to avoid flash-redirect on page refresh
   useEffect(() => {
     if (!initializing && !currentRide) {
       navigate(-1);
     }
   }, [currentRide, initializing, navigate]);
 
-  // Fetch the other person's name if not available from the join
+  // [INTENT] Resolve the other party's display name for the chat header
+  // [EDGE-CASE] Join data may be missing if ride was fetched without profile join — falls back to direct profile query
   const isDriver = profile?.user_type === 'driver';
   useEffect(() => {
     if (!currentRide) return;
 
-    // Check if we already have the name from the join
+    // [INTENT] Prefer name from ride join to avoid an extra DB round-trip
     const nameFromJoin = isDriver
       ? currentRide.rider?.full_name
       : currentRide.driver?.full_name;
@@ -45,7 +47,7 @@ export default function ChatPage() {
       return;
     }
 
-    // Fallback: fetch the other person's profile directly
+    // [INTENT] Direct profile fetch when join data is unavailable (e.g., ride re-fetched without joins)
     const otherId = isDriver ? currentRide.rider_id : currentRide.driver_id;
     if (!otherId) return;
 

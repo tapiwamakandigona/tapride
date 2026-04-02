@@ -3,10 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <title>TapRide</title>
+    <!--
+      [INTENT] GitHub Pages SPA redirect hack.
+      GH Pages serves this 404.html for any unknown path. This script converts the
+      current path into a query-string redirect to index.html, which then restores
+      the original URL via sessionStorage before React Router mounts.
+      [CONSTRAINT] Must match the `base` path configured in vite.config.ts (/tapride/).
+      [EDGE-CASE] Paths with query strings or hashes are preserved through the redirect.
+      See: https://github.com/rafgraph/spa-github-pages
+    -->
     <script>
-      // SPA redirect for GitHub Pages
-      // Encodes the path into a query string and redirects to index.html
-      var pathSegmentsToKeep = 1;
+      var pathSegmentsToKeep = 1; // '/tapride' = 1 segment
       var l = window.location;
       l.replace(
         l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +

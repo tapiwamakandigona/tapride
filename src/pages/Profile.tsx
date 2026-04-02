@@ -20,7 +20,7 @@ export default function Profile() {
 
   const isDriver = profile?.user_type === 'driver';
 
-  // Sync local state when profile changes (e.g. after refresh)
+  // [INTENT] Keep form fields in sync when profile reloads (e.g., after page refresh or background update)
   useEffect(() => {
     if (profile) {
       setFullName(profile.full_name || '');

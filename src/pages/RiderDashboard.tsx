@@ -29,7 +29,8 @@ export default function RiderDashboard() {
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
 
-  // Set pickup to current location
+  // [INTENT] Auto-set pickup to user's current GPS position on first load
+  // [CONSTRAINT] Only sets once (when pickup is null) to avoid overriding manual selection
   useEffect(() => {
     if (position && !pickup) {
       setPickup({ lat: position.lat, lng: position.lng });
@@ -37,7 +38,8 @@ export default function RiderDashboard() {
     }
   }, [position, pickup]);
 
-  // Fetch route when both pickup and destination are set
+  // [INTENT] Fetch OSRM driving route for map polyline + fare estimate
+  // [CONSTRAINT] Clears route when either point is removed to keep UI consistent
   useEffect(() => {
     if (!pickup || !destination) {
       setRoute(null);
@@ -80,7 +82,7 @@ export default function RiderDashboard() {
       return;
     }
 
-    // Validate minimum distance
+    // [INTENT] Minimum distance prevents accidental same-location rides (GPS jitter)
     const dist = route?.distanceKm ?? haversineDistance(pickup.lat, pickup.lng, destination.lat, destination.lng);
     if (dist < MIN_RIDE_DISTANCE_KM) {
       setError('Pickup and destination are too close. Please choose locations at least 100m apart.');
@@ -123,7 +125,7 @@ export default function RiderDashboard() {
     }
   };
 
-  // Show loading spinner while useRide initializes
+  // [INTENT] Block UI until ride state is resolved from DB on mount/refresh
   if (initializing) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -132,13 +134,13 @@ export default function RiderDashboard() {
     );
   }
 
-  // Ride states
+  // [INTENT] Derive UI state from ride status — each status shows different controls
   const isRequested = currentRide?.status === 'requested';
   const isAccepted = currentRide?.status === 'accepted';
   const isInProgress = currentRide?.status === 'in_progress';
   const hasActiveRide = isAccepted || isInProgress;
 
-  // Driver info when ride is accepted
+  // [INTENT] Show driver profile when ride is accepted — builds rider confidence
   const driverName = currentRide?.driver?.full_name;
   const driverRating = currentRide?.driver?.rating;
   const vehicleInfo = currentRide?.driver
@@ -146,16 +148,17 @@ export default function RiderDashboard() {
     : null;
   const licensePlate = currentRide?.driver?.license_plate;
 
-  // Driver position for map
+  // [INTENT] Plot driver's real-time position on the map for rider tracking
   const driverPos = driverLocation ? { lat: driverLocation.lat, lng: driverLocation.lng } : undefined;
 
   return (
     <div className="flex flex-col h-full">
-      {/* Active ride banner — only for accepted/in_progress */}
+      {/* [INTENT] Tappable banner to jump to active ride detail — only for accepted/in_progress */}
+      {/* [Z-INDEX] relative z-20 — sits above map container */}
       {hasActiveRide && (
         <button
           onClick={() => navigate('/ride/active')}
-          className="w-full px-4 py-3 bg-primary-600 text-white text-sm font-semibold flex items-center justify-between z-10"
+          className="w-full px-4 py-3 bg-primary-600 text-white text-sm font-semibold flex items-center justify-between relative z-20"
         >
           <span>
             {isAccepted ? 'Driver is on the way - tap to view' : 'Ride in progress - tap to view'}
@@ -167,7 +170,8 @@ export default function RiderDashboard() {
       )}
 
       {/* Greeting */}
-      <div className="px-4 pt-4 pb-2 bg-white dark:bg-gray-900 z-10">
+      {/* [Z-INDEX] relative z-20 — greeting + search inputs must be above map */}
+      <div className="px-4 pt-4 pb-2 bg-white dark:bg-gray-900 relative z-20">
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">
           Hi, {profile?.full_name?.split(' ')[0] || 'Rider'}
         </h1>
@@ -178,7 +182,7 @@ export default function RiderDashboard() {
 
       {/* Address search inputs — only when no ride */}
       {!currentRide && (
-        <div className="px-4 py-2 bg-white dark:bg-gray-900 space-y-2 z-10">
+        <div className="px-4 py-2 bg-white dark:bg-gray-900 space-y-2 relative z-20">
           <AddressSearch
             placeholder="Pickup location"
             icon="pickup"
@@ -195,7 +199,8 @@ export default function RiderDashboard() {
       )}
 
       {/* Map */}
-      <div className="flex-1 relative">
+      {/* [Z-INDEX] isolate contains Leaflet's internal z-indexes (400+) within this div */}
+      <div className="flex-1 relative isolate">
         <MapView
           center={position ? [position.lat, position.lng] : undefined}
           userPosition={position ? { lat: position.lat, lng: position.lng } : undefined}
@@ -207,9 +212,10 @@ export default function RiderDashboard() {
           className="h-full w-full"
         />
 
-        {/* Selecting indicator */}
+        {/* [INTENT] Visual hint that map is in tap-to-select mode */}
+        {/* [Z-INDEX] z-10 within isolated map — above map tiles but below sibling panels */}
         {selectingFor && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium z-[1000]">
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium z-10">
             <span>Tap map to set {selectingFor}</span>
             <button
               onClick={() => setSelectingFor(null)}
@@ -223,14 +229,15 @@ export default function RiderDashboard() {
         )}
 
         {locationError && (
-          <div className="absolute top-4 left-4 right-4 bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-4 py-2 rounded-xl text-sm z-[1000]">
+          <div className="absolute top-4 left-4 right-4 bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-4 py-2 rounded-xl text-sm z-10">
             {locationError}
           </div>
         )}
       </div>
 
       {/* Bottom Panel */}
-      <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-4 py-4 space-y-3">
+      {/* [Z-INDEX] relative z-20 — bottom panel buttons must be clickable above map */}
+      <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-4 py-4 space-y-3 relative z-20">
         {error && <AlertError message={error} />}
 
         {isRequested ? (

@@ -99,7 +99,7 @@ export default function AddressSearch({
         )}
       </div>
 
-      {/* Dropdown results */}
+      {/* [Z-INDEX] z-[2000] — must float above Leaflet map tiles (z-400+) and other UI panels */}
       {open && results.length > 0 && (
         <div className="absolute z-[2000] left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 max-h-48 overflow-y-auto">
           {results.map((r) => (

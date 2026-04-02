@@ -60,7 +60,7 @@ export default function Register() {
         return;
       }
 
-      // Use the userType returned from signUp
+      // [INTENT] Route to correct dashboard based on registered role
       const path = result.userType === 'driver' ? '/driver' : '/rider';
       navigate(path, { replace: true });
     } catch {

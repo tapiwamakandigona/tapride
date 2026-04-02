@@ -3,10 +3,11 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents 
 import L from 'leaflet';
 import type { LocationCoords } from '../../types';
 
-// Default center: Bulawayo, Zimbabwe
+// [INTENT] Default map center when no user position is available (Bulawayo, Zimbabwe)
 const DEFAULT_CENTER: [number, number] = [-20.1325, 28.6265];
 
-// All markers use DivIcon — no CDN dependency
+// [INTENT] All markers use DivIcon (inline HTML) to avoid dependency on Leaflet's CDN marker images
+// [CONSTRAINT] className must be empty string to prevent Leaflet's default icon styling
 const userIcon = L.divIcon({
   html: '<div style="background:#6366f1;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35)"></div>',
   iconSize: [16, 16],

@@ -28,7 +28,8 @@ export default function ActiveRide() {
 
   const isDriver = profile?.user_type === 'driver';
 
-  // If no active ride (after initializing completes), redirect back
+  // [INTENT] Redirect away from active ride screen when there's nothing to show
+  // [EDGE-CASE] Completed rides redirect to rating; cancelled/missing rides go to dashboard
   useEffect(() => {
     if (initializing) return;
     if (!currentRide || currentRide.status === 'completed' || currentRide.status === 'cancelled') {
@@ -41,7 +42,8 @@ export default function ActiveRide() {
     }
   }, [currentRide, initializing, isDriver, navigate]);
 
-  // Fetch route for display
+  // [INTENT] Fetch OSRM route for map polyline and ETA display
+  // [CONSTRAINT] Only re-fetches when ride ID changes, not on every render
   useEffect(() => {
     if (!currentRide) return;
     let cancelled = false;
@@ -54,9 +56,10 @@ export default function ActiveRide() {
       if (!cancelled) setRoute(r);
     });
     return () => { cancelled = true; };
-  }, [currentRide?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentRide?.id]); // eslint-disable-line react-hooks/exhaustive-deps — intentionally depends only on ride ID
 
-  // Driver: track own location
+  // [INTENT] Start GPS watch when driver views active ride — needed for real-time location sharing
+  // [CONSTRAINT] Must return cleanup function to stop watch on unmount or role change
   useEffect(() => {
     if (isDriver) {
       const stop = startWatching();
@@ -64,14 +67,15 @@ export default function ActiveRide() {
     }
   }, [isDriver, startWatching]);
 
-  // Driver: update location in DB
+  // [INTENT] Push driver GPS to Supabase so rider can track in real-time
+  // [CONSTRAINT] Fires on every position change — Supabase upsert handles dedup
   useEffect(() => {
     if (isDriver && position) {
       updateDriverLocation(position.lat, position.lng, position.heading, position.speed);
     }
   }, [isDriver, position, updateDriverLocation]);
 
-  // Show loading while initializing
+  // [INTENT] Block render until useRide resolves active ride from DB — prevents flash of wrong state
   if (initializing) return <PageSpinner />;
 
   if (!currentRide) return null;
@@ -129,7 +133,7 @@ export default function ActiveRide() {
     ? position ? { lat: position.lat, lng: position.lng } : undefined
     : driverLocation ? { lat: driverLocation.lat, lng: driverLocation.lng } : undefined;
 
-  // Other party info
+  // [INTENT] Show the other side's profile (driver sees rider info, rider sees driver info)
   const otherParty = isDriver ? currentRide.rider : currentRide.driver;
   const otherName = otherParty?.full_name;
   const otherRating = otherParty?.rating;
@@ -140,8 +144,9 @@ export default function ActiveRide() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Status Bar */}
-      <div className="px-4 pt-4 pb-2 bg-white dark:bg-gray-900 z-10">
+      {/* [INTENT] Status bar with back button + ride status badge + chat shortcut */}
+      {/* [Z-INDEX] z-20 relative — must sit above the map container (Leaflet uses z-index internally) */}
+      <div className="relative px-4 pt-4 pb-2 bg-white dark:bg-gray-900 z-20">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
@@ -169,8 +174,8 @@ export default function ActiveRide() {
         </div>
       </div>
 
-      {/* Map */}
-      <div className="flex-1">
+      {/* [Z-INDEX] isolate creates a new stacking context — Leaflet's internal z-indexes (400+) won't bleed into sibling panels */}
+      <div className="flex-1 isolate">
         <MapView
           center={driverPos ? [driverPos.lat, driverPos.lng] : undefined}
           userPosition={!isDriver && position ? { lat: position.lat, lng: position.lng } : undefined}
@@ -182,8 +187,8 @@ export default function ActiveRide() {
         />
       </div>
 
-      {/* Bottom Panel */}
-      <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-4 py-4">
+      {/* [Z-INDEX] relative z-20 — must stack above map to receive clicks on action buttons */}
+      <div className="relative bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-4 py-4 z-20">
         {error && <AlertError message={error} className="mb-3" />}
 
         {/* Other party info */}

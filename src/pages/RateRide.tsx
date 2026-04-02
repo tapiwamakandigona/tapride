@@ -12,7 +12,8 @@ export default function RateRide() {
   const location = useLocation();
   const { user, profile } = useAuth();
 
-  // Read the completed ride from router state (passed by ActiveRide)
+  // [INTENT] Read completed ride from navigation state (passed by ActiveRide on completion)
+  // [EDGE-CASE] State is null on page refresh — fallback fetch below handles that
   const stateRide: Ride | null = (location.state as { ride?: Ride } | null)?.ride ?? null;
 
   const [ride, setRide] = useState<Ride | null>(stateRide);
@@ -26,7 +27,8 @@ export default function RateRide() {
   const isDriver = profile?.user_type === 'driver';
   const homePath = isDriver ? '/driver' : '/rider';
 
-  // Fallback: fetch last completed ride from DB if location.state is null (page refresh)
+  // [INTENT] Fallback: if user refreshes the rating page, fetch the most recent completed ride
+  // [CONSTRAINT] Only triggers when stateRide is null (navigation state lost)
   useEffect(() => {
     if (stateRide || !user) {
       setRideLoading(false);
@@ -49,7 +51,7 @@ export default function RateRide() {
           setRide(data);
         }
       } catch {
-        // Failed to fetch last completed ride
+        // [EDGE-CASE] DB error on fallback fetch — user can still navigate home
       } finally {
         setRideLoading(false);
       }
@@ -61,10 +63,10 @@ export default function RateRide() {
   const handleSubmit = async () => {
     if (rating === 0 || !ride || !user) return;
 
-    // Guard: the person being rated must exist
+    // [INTENT] Guard against rating a non-existent counterpart (e.g., cancelled ride with no driver)
     const ratedId = isDriver ? ride.rider_id : ride.driver_id;
     if (!ratedId) {
-      // Can't rate if there's no counterpart — just navigate home
+      // [EDGE-CASE] No counterpart to rate (ride cancelled before driver assigned) — skip to home
       navigate(homePath, { replace: true });
       return;
     }
@@ -83,12 +85,12 @@ export default function RateRide() {
 
       setSubmitted(true);
 
-      // Navigate after a short delay
+      // [INTENT] Brief "thank you" animation before redirect
       setTimeout(() => {
         navigate(homePath, { replace: true });
       }, 1500);
     } catch {
-      // Still navigate on error
+      // [EDGE-CASE] Rating insert failed — still navigate home to avoid stuck screen
       navigate(homePath, { replace: true });
     } finally {
       setLoading(false);
@@ -101,7 +103,7 @@ export default function RateRide() {
 
   if (rideLoading) return <PageSpinner />;
 
-  // If no ride data was found even after DB fallback, show message
+  // [INTENT] Graceful fallback when ride data isn't available (edge case: deep link without state)
   if (!ride) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
