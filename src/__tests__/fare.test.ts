@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateFare, formatFare } from '../lib/fare';
+import { calculateFare, formatFare, FARE_CONFIG } from '../lib/fare';
 
 describe('calculateFare', () => {
   it('returns minimum fare for very short distances', () => {
@@ -34,23 +34,25 @@ describe('calculateFare', () => {
 });
 
 describe('formatFare', () => {
-  it('formats fare with dollar sign and 2 decimal places', () => {
-    expect(formatFare(7)).toBe('$7.00');
+  const sym = FARE_CONFIG.symbol;
+
+  it('formats fare with currency symbol and 2 decimal places', () => {
+    expect(formatFare(7)).toBe(`${sym}7.00`);
   });
 
   it('formats zero', () => {
-    expect(formatFare(0)).toBe('$0.00');
+    expect(formatFare(0)).toBe(`${sym}0.00`);
   });
 
   it('formats decimal amounts', () => {
-    expect(formatFare(4.75)).toBe('$4.75');
+    expect(formatFare(4.75)).toBe(`${sym}4.75`);
   });
 
   it('rounds to 2 decimal places', () => {
-    expect(formatFare(3.456)).toBe('$3.46');
+    expect(formatFare(3.456)).toBe(`${sym}3.46`);
   });
 
   it('handles large amounts', () => {
-    expect(formatFare(1234.5)).toBe('$1234.50');
+    expect(formatFare(1234.5)).toBe(`${sym}1234.50`);
   });
 });
