@@ -21,6 +21,9 @@ const ChatPage = lazy(() => import('./pages/ChatPage'));
 const RateRide = lazy(() => import('./pages/RateRide'));
 const RideHistory = lazy(() => import('./pages/RideHistory'));
 const Profile = lazy(() => import('./pages/Profile'));
+// [INTENT] Email verification callback page — Supabase redirects here after user clicks email link
+// [CONSTRAINT] Supabase dashboard "Redirect URLs" must include: https://tapiwamakandigona.github.io/tapride/verify
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 
 // [INTENT] Shared loading fallback for Suspense boundaries
 function PageLoader() {
@@ -72,6 +75,9 @@ export default function App() {
                 </GuestRoute>
               }
             />
+            {/* [INTENT] Email verification callback — public route, not guest-gated, because
+                Supabase may set the session before this page renders (making GuestRoute redirect away) */}
+            <Route path="/verify" element={<VerifyEmail />} />
 
             {/* Protected routes with bottom navbar */}
             <Route

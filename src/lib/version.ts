@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 
 // [INTENT] App version for forced-update checks against server-side min_version
 // [CONSTRAINT] Must be semver — compareVersions parses up to 3 numeric segments
-export const APP_VERSION = '1.0.1';
+export const APP_VERSION = '2.0.0';
 
 // [INTENT] Check if the running app version is below the server-mandated minimum
 // [EDGE-CASE] app_config table may not exist yet, or key may use legacy name — try both
