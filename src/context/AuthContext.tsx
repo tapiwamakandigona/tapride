@@ -8,7 +8,7 @@ interface AuthContextType {
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
-  signUp: (email: string, password: string, metadata?: Record<string, string>) => Promise<{ error: string | null; userType?: string }>;
+  signUp: (email: string, password: string, metadata?: Record<string, string>) => Promise<{ error: string | null; userType?: string; confirmationRequired?: boolean }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null; userType?: string }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<Profile>) => Promise<{ error: string | null }>;
@@ -164,7 +164,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (fetched) userType = fetched.user_type;
     }
 
-    return { error: null, userType };
+    // [EDGE-CASE] Supabase returns user but no session when email confirmation is required
+    const confirmationRequired = !!(data.user && !data.session);
+    return { error: null, userType, confirmationRequired };
   }, [fetchProfile]);
 
   // [INTENT] Sign in and immediately return userType for navigation routing
@@ -183,9 +185,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchProfile]);
 
   // [INTENT] Clear all auth state — Supabase handles token cleanup
+  // [CONSTRAINT] Driver location row must be deleted so signed-out drivers don't appear on rider maps
   // [EDGE-CASE] signOut may throw on network failure — catch to ensure local state clears
   const signOut = useCallback(async () => {
     try {
+      // [INTENT] Clean up driver_locations so signed-out drivers don't ghost on rider maps
+      if (user && profile?.user_type === 'driver') {
+        await supabase.from('driver_locations').delete().eq('driver_id', user.id);
+      }
       await supabase.auth.signOut();
     } catch (err) {
       console.warn('[TapRide] signOut error:', err);
@@ -195,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setSession(null);
     }
-  }, []);
+  }, [user, profile?.user_type]);
 
   // [INTENT] Partial profile update with field allowlist to prevent injection of computed/admin fields
   // [CONSTRAINT] Upsert requires id — always included from authenticated user

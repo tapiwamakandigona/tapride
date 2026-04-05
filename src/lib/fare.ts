@@ -6,8 +6,8 @@ export const FARE_CONFIG = {
   baseFare: Number(import.meta.env.VITE_FARE_BASE) || 2.0,
   perKmRate: Number(import.meta.env.VITE_FARE_PER_KM) || 0.5,
   minFare: Number(import.meta.env.VITE_FARE_MIN) || 3.0,
-  currency: import.meta.env.VITE_FARE_CURRENCY || 'USD',
-  symbol: import.meta.env.VITE_FARE_SYMBOL || '$',
+  currency: import.meta.env.VITE_FARE_CURRENCY || 'ZiG',
+  symbol: import.meta.env.VITE_FARE_SYMBOL || 'ZiG ',
 } as const;
 
 export function calculateFare(distanceKm: number): number {

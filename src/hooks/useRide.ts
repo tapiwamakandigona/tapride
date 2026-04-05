@@ -51,8 +51,27 @@ export function useRide() {
   const { driverLocation, updateDriverLocation, subscribeToDriverLocation } =
     useDriverLocation(user?.id);
 
+  // [INTENT] Re-fetch a ride with full profile joins when realtime payload lacks FK data
+  // [CONSTRAINT] Only called after realtime updates that may have changed driver/rider assignment
+  // [EDGE-CASE] Query may fail if ride was just deleted — silently ignored
+  const refetchRideWithProfiles = useCallback(async (rideId: string) => {
+    try {
+      const data = await queryRideWithFallback(
+        () => supabase.from('rides').select(RIDE_SELECT).eq('id', rideId).single(),
+        () => supabase.from('rides').select(RIDE_SELECT_FALLBACK).eq('id', rideId).single(),
+      );
+      if (data && mountedRef.current) {
+        setCurrentRide(data as Ride);
+      }
+    } catch (err) {
+      console.warn('[TapRide] refetchRideWithProfiles error:', err);
+    }
+  }, []);
+
   // [INTENT] Handle realtime ride updates — merge into state, preserving joined profile data
   // [EDGE-CASE] Completed/cancelled rides still update state so the UI can show final status before clearing
+  // [EDGE-CASE] Supabase realtime payloads do NOT include FK joins — when status changes to
+  //   'accepted' or 'in_progress', we must refetch to get rider/driver profile data
   const handleRideUpdate = useCallback((updated: Ride) => {
     if (!mountedRef.current) return;
     if (updated.status === 'cancelled' || updated.status === 'completed') {
@@ -62,7 +81,11 @@ export function useRide() {
         prev ? { ...prev, ...updated, rider: prev.rider, driver: prev.driver } : updated,
       );
     }
-  }, []);
+    // [INTENT] Refetch with joins when profiles may be missing or newly assigned
+    if (updated.status === 'accepted' || updated.status === 'in_progress') {
+      refetchRideWithProfiles(updated.id);
+    }
+  }, [refetchRideWithProfiles]);
 
   const { subscribeToRide } = useRideSubscription(handleRideUpdate);
 

@@ -1,39 +1,81 @@
+// [INTENT] Password reset callback page — user lands here from the email link
+// [CONSTRAINT] Supabase appends recovery token to URL hash; auth state is auto-set by Supabase client
+// [EDGE-CASE] Link may be expired or already used — must handle updateUser errors gracefully
+
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import AlertError from '../components/ui/AlertError';
 import Spinner from '../components/ui/Spinner';
 import Footer from '../components/ui/Footer';
 
-export default function Login() {
+export default function ResetPassword() {
   const navigate = useNavigate();
-  const { signIn } = useAuth();
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // [INTENT] Update user password via Supabase Auth after token validation
+  // [EDGE-CASE] Expired/invalid token causes updateUser to fail — show error with link back to forgot-password
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
 
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
+    setLoading(true);
     try {
-      const result = await signIn(email, password);
-      if (result.error) {
-        setError(result.error);
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) {
+        setError(updateError.message);
         return;
       }
-      // [INTENT] Route to correct dashboard based on user role after successful login
-      const path = result.userType === 'driver' ? '/driver' : '/rider';
-      navigate(path, { replace: true });
+      setSuccess(true);
+      // [INTENT] Auto-redirect to login after brief success display
+      setTimeout(() => navigate('/login', { replace: true }), 3000);
     } catch {
       setError('An unexpected error occurred');
     } finally {
       setLoading(false);
     }
   };
+
+  // [INTENT] Success confirmation before auto-redirect
+  if (success) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 px-6">
+        <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 text-center">
+          <div className="w-16 h-16 bg-green-100 dark:bg-green-900/40 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Password updated!</h2>
+          <p className="text-gray-500 dark:text-gray-400 mb-6">
+            Redirecting you to sign in...
+          </p>
+          <Link
+            to="/login"
+            className="text-primary-600 dark:text-primary-400 font-semibold hover:underline"
+          >
+            Go to Sign In
+          </Link>
+        </div>
+        <div className="mt-8"><Footer /></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
@@ -60,10 +102,10 @@ export default function Login() {
           </span>
         </div>
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mt-6">
-          Welcome back
+          Reset password
         </h1>
         <p className="text-gray-500 dark:text-gray-400 mt-1">
-          Sign in to continue your journey
+          Enter your new password
         </p>
       </div>
 
@@ -74,28 +116,14 @@ export default function Login() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="your@email.com"
-              required
-              className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              Password
+              New Password
             </label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
+                placeholder="Min 6 characters"
                 required
                 minLength={6}
                 className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all pr-12"
@@ -121,6 +149,21 @@ export default function Login() {
             </div>
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Confirm New Password
+            </label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Re-enter new password"
+              required
+              minLength={6}
+              className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+            />
+          </div>
+
           <button
             type="submit"
             disabled={loading}
@@ -129,35 +172,24 @@ export default function Login() {
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <Spinner size="sm" className="border-white/30 border-t-white" />
-                Signing in...
+                Updating...
               </span>
             ) : (
-              'Sign In'
+              'Update Password'
             )}
           </button>
-
-          <div className="text-right">
-            <Link
-              to="/forgot-password"
-              className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
-            >
-              Forgot password?
-            </Link>
-          </div>
         </form>
 
         <p className="text-center mt-6 text-gray-500 dark:text-gray-400">
-          Don't have an account?{' '}
           <Link
-            to="/register"
+            to="/login"
             className="text-primary-600 dark:text-primary-400 font-semibold hover:underline"
           >
-            Sign Up
+            Back to Sign In
           </Link>
         </p>
       </div>
 
-      {/* Footer */}
       <div className="flex-shrink-0">
         <Footer />
       </div>

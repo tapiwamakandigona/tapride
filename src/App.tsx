@@ -24,6 +24,8 @@ const Profile = lazy(() => import('./pages/Profile'));
 // [INTENT] Email verification callback page — Supabase redirects here after user clicks email link
 // [CONSTRAINT] Supabase dashboard "Redirect URLs" must include: https://tapiwamakandigona.github.io/tapride/verify
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
 // [INTENT] Shared loading fallback for Suspense boundaries
 function PageLoader() {
@@ -78,6 +80,16 @@ export default function App() {
             {/* [INTENT] Email verification callback — public route, not guest-gated, because
                 Supabase may set the session before this page renders (making GuestRoute redirect away) */}
             <Route path="/verify" element={<VerifyEmail />} />
+            {/* [INTENT] Password reset flow — forgot is guest-gated, reset is public (Supabase sets session via hash) */}
+            <Route
+              path="/forgot-password"
+              element={
+                <GuestRoute>
+                  <ForgotPassword />
+                </GuestRoute>
+              }
+            />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* Protected routes with bottom navbar */}
             <Route

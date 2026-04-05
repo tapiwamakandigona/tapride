@@ -23,6 +23,7 @@ export default function Register() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showEmailSent, setShowEmailSent] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +61,12 @@ export default function Register() {
         return;
       }
 
+      // [EDGE-CASE] Supabase requires email confirmation — user exists but no session yet
+      if (result.confirmationRequired) {
+        setShowEmailSent(true);
+        return;
+      }
+
       // [INTENT] Route to correct dashboard based on registered role
       const path = result.userType === 'driver' ? '/driver' : '/rider';
       navigate(path, { replace: true });
@@ -69,6 +76,33 @@ export default function Register() {
       setLoading(false);
     }
   };
+
+  // [INTENT] Show email verification prompt when Supabase requires confirmation
+  if (showEmailSent) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 px-6">
+        <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 text-center">
+          <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/40 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-primary-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+              <polyline points="22,6 12,13 2,6" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Check your email</h2>
+          <p className="text-gray-500 dark:text-gray-400 mb-6">
+            We sent a verification link to <span className="font-semibold text-gray-900 dark:text-white">{email}</span>. Click the link to activate your account.
+          </p>
+          <Link
+            to="/login"
+            className="text-primary-600 dark:text-primary-400 font-semibold hover:underline"
+          >
+            Back to Sign In
+          </Link>
+        </div>
+        <div className="mt-8"><Footer /></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
