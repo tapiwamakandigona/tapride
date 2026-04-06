@@ -29,7 +29,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   };
 
   handleGoHome = () => {
-    window.location.href = '/tapride/';
+    window.location.href = import.meta.env.BASE_URL || '/';
   };
 
   render() {

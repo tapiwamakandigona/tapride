@@ -2,15 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/tapride/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#1a6df5" />
     <meta name="description" content="TapRide - Fast, reliable rides at your fingertips" />
     <title>TapRide</title>
-    <!-- SPA redirect decoder for GitHub Pages 404 handling -->
+    <!-- SPA redirect decoder for GitHub Pages 404 handling (skip in Capacitor) -->
     <script>
       (function(l) {
-        if (l.search[1] === '/') {
+        if (l.protocol !== 'capacitor:' && l.search[1] === '/') {
           var decoded = l.search.slice(1).split('&').map(function(s) {
             return s.replace(/~and~/g, '&');
           }).join('?');

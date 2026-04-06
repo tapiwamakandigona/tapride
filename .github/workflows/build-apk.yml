@@ -35,8 +35,9 @@ jobs:
         run: npm run test
 
       - name: Build web app
-        run: npx vite build --base /
+        run: npx vite build
         env:
+          VITE_BASE_URL: /
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 

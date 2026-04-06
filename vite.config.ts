@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/tapride/',
+  base: process.env.VITE_BASE_URL || '/tapride/',
   test: {
     globals: true,
     environment: 'jsdom',
