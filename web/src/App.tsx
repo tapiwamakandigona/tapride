@@ -32,7 +32,7 @@ const ProtectedLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
 );
 
 const App: React.FC = () => (
-  <BrowserRouter>
+  <BrowserRouter basename={import.meta.env.BASE_URL}>
     <Suspense fallback={<LoadingSpinner fullScreen />}>
       <Routes>
         {/* Public routes */}
