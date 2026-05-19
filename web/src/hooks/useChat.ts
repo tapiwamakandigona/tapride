@@ -97,7 +97,7 @@ export function useChat(rideId: string) {
       logger.error('sendMessage', e);
       return false;
     }
-  }, [user, profile, rideId]);
+  }, [user, rideId]);
 
   return { messages, loading, error, sendMessage };
 }
