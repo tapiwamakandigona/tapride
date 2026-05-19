@@ -158,10 +158,17 @@ const RiderDashboard: React.FC = () => {
           Query.notEqual('status', 'completed'),
           Query.notEqual('status', 'cancelled'),
           Query.orderDesc('$createdAt'),
-          Query.limit(1),
+          Query.limit(5),
         ]);
         if (res.documents.length > 0) {
-          navigate(`/ride/${res.documents[0].$id}`, { replace: true });
+          // prefer inprogress > accepted > pending
+          const priority = ['inprogress', 'accepted', 'pending'];
+          const sorted = res.documents.sort((a, b) => {
+            const ai = priority.indexOf(a.status);
+            const bi = priority.indexOf(b.status);
+            return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+          });
+          navigate(`/ride/${sorted[0].$id}`, { replace: true });
         }
       } catch {
         // no active ride, stay on dashboard
