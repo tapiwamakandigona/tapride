@@ -103,16 +103,33 @@ const RiderDashboard: React.FC = () => {
   }, [dropoffAddress]);
 
   const handleRequestRide = async () => {
-    if (!pickupLat || !pickupLng || !dropoffLat || !dropoffLng || !fareEstimate) return;
-    const distKm = haversineKm(pickupLat, pickupLng, dropoffLat, dropoffLng);
+    // Geocode dropoff if not yet resolved
+    let lat = dropoffLat;
+    let lng = dropoffLng;
+    let addr = dropoffAddress;
+    if ((!lat || !lng) && dropoffAddress.trim()) {
+      setGeocoding(true);
+      const result = await geocode(dropoffAddress);
+      setGeocoding(false);
+      if (!result) { return; }
+      lat = parseFloat(result.lat);
+      lng = parseFloat(result.lon);
+      addr = result.display_name;
+      setDropLat(lat);
+      setDropLng(lng);
+      setDropAddress(addr);
+    }
+    if (!pickupLat || !pickupLng || !lat || !lng) return;
+    const distKm = haversineKm(pickupLat, pickupLng, lat, lng);
+    const fare = calculateFare(distKm);
     const ride = await requestRide({
       pickupLat,
       pickupLng,
       pickupAddress,
-      dropoffLat,
-      dropoffLng,
-      dropoffAddress,
-      fare: fareEstimate,
+      dropoffLat: lat,
+      dropoffLng: lng,
+      dropoffAddress: addr,
+      fare,
       distanceKm: distKm,
     });
     if (ride) {
@@ -193,7 +210,7 @@ const RiderDashboard: React.FC = () => {
         {/* Request button */}
         <button
           onClick={handleRequestRide}
-          disabled={loading || !dropoffLat || !pickupLat}
+          disabled={loading || !pickupAddress.trim() || !dropoffAddress.trim()}
           className="w-full rounded-xl bg-brand-500 py-3 text-sm font-bold text-white hover:bg-brand-600 disabled:opacity-50 transition-colors"
         >
           {loading ? <LoadingSpinner size="sm" /> : 'Request Ride 🚖'}
