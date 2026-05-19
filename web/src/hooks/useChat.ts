@@ -17,7 +17,7 @@ export function useChat(rideId: string) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { user, profile } = useAuthStore();
+  const { user } = useAuthStore();
 
   // Load existing messages on mount / when rideId changes
   useEffect(() => {
@@ -79,13 +79,11 @@ export function useChat(rideId: string) {
   /** Send a chat message */
   const sendMessage = useCallback(async (content: string): Promise<boolean> => {
     if (!user || !rideId || !content.trim()) return false;
-    const senderName = profile?.name ?? user.name ?? user.email ?? 'Unknown';
     setError(null);
     try {
       await databases.createDocument(DATABASE_ID, COLLECTIONS.MESSAGES, ID.unique(), {
         rideId,
         senderId: user.$id,
-        senderName,
         content: content.trim(),
       }, [
         Permission.read(Role.users()),
