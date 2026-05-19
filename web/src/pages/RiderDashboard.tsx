@@ -10,7 +10,7 @@
  *  - Fare preview confirm sheet before booking (fix 1)
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Query } from 'appwrite';
 import { databases, DATABASE_ID, COLLECTIONS } from '@/lib/appwrite';
 import { MapView } from '@/components/MapView';
@@ -143,14 +143,17 @@ const FareConfirmSheet: React.FC<FareConfirmProps> = ({
 
 const RiderDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuthStore();
   const { nearbyDrivers } = useRideStore();
   const { fetchNearbyDrivers } = useDriverLocation();
   const { requestRide, loading, error } = useRide();
 
   // On mount: redirect to active ride if one exists in Appwrite
+  // But don't redirect if we're already on a non-dashboard path (rate, chat, etc.)
   useEffect(() => {
     if (!user) return;
+    if (location.pathname !== '/rider') return; // only redirect from the dashboard
     (async () => {
       try {
         const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.RIDES, [
@@ -174,7 +177,7 @@ const RiderDashboard: React.FC = () => {
         // no active ride, stay on dashboard
       }
     })();
-  }, [user, navigate]);
+  }, [user, navigate, location.pathname]);
 
   const [detectingLocation, setDetectingLocation] = useState(true);
   const [userLat, setUserLat] = useState<number | undefined>();
