@@ -1,1 +1,0 @@
-import{d as t}from"./index-CrdvejOu.js";import{s as f}from"./appwrite-CcNwEtCE.js";function m(r,e){const s=t.useRef(e);s.current=e,t.useEffect(()=>{if(!r)return;const u=f(r,o=>{s.current(o)});return()=>{u()}},[r])}export{m as u};
