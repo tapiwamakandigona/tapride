@@ -210,6 +210,7 @@ const RiderDashboard: React.FC = () => {
         {/* Request button */}
         <button
           onClick={handleRequestRide}
+          type="button"
           disabled={loading || !pickupAddress.trim() || !dropoffAddress.trim()}
           className="w-full rounded-xl bg-brand-500 py-3 text-sm font-bold text-white hover:bg-brand-600 disabled:opacity-50 transition-colors"
         >
