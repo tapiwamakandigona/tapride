@@ -37,7 +37,7 @@ export function useRide() {
         ID.unique(),
         {
           riderId: user.$id,
-          status: 'requested' as RideStatus,
+          status: 'pending' as RideStatus,
           paymentStatus: 'pending',
           requestedAt: new Date().toISOString(),
           ...params,
@@ -89,7 +89,7 @@ export function useRide() {
         DATABASE_ID,
         COLLECTIONS.RIDES,
         rideId,
-        { status: 'in_progress', startedAt: new Date().toISOString() },
+        { status: 'inprogress', startedAt: new Date().toISOString() },
       );
       setActiveRide(doc as unknown as Ride);
       return true;

@@ -68,7 +68,7 @@ export function useChat(rideId: string) {
       await databases.createDocument(DATABASE_ID, COLLECTIONS.MESSAGES, ID.unique(), {
         rideId,
         senderId: user.$id,
-        senderName: profile.fullName,
+        senderName: profile.name,
         content: content.trim(),
         createdAt: new Date().toISOString(),
       });

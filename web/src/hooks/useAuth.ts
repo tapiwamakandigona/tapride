@@ -83,7 +83,8 @@ export function useAuth() {
         ID.unique(),
         {
           userId: newUser.$id,
-          fullName,
+          name: fullName,
+          email,
           phone,
           role,
           rating: 5.0,

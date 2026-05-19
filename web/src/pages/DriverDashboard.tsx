@@ -50,7 +50,7 @@ const DriverDashboard: React.FC = () => {
     const load = async () => {
       try {
         const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.RIDES, [
-          Query.equal('status', 'requested'),
+          Query.equal('status', 'pending'),
           Query.orderDesc('requestedAt'),
           Query.limit(10),
         ]);
@@ -69,7 +69,7 @@ const DriverDashboard: React.FC = () => {
       : '',
     (event) => {
       const ride = event.payload;
-      if (event.events.some((e) => e.includes('.create')) && ride.status === 'requested') {
+      if (event.events.some((e) => e.includes('.create')) && ride.status === 'pending') {
         setRequestedRides((prev) => {
           if (prev.find((r) => r.$id === ride.$id)) return prev;
           rideRequestAlert();
@@ -77,7 +77,7 @@ const DriverDashboard: React.FC = () => {
         });
       }
       if (event.events.some((e) => e.includes('.update'))) {
-        if (ride.status !== 'requested') {
+        if (ride.status !== 'pending') {
           setRequestedRides((prev) => prev.filter((r) => r.$id !== ride.$id));
         }
       }

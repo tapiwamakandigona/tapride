@@ -43,7 +43,7 @@ const RideHistory: React.FC = () => {
             key={ride.$id}
             ride={ride}
             onClick={() => {
-              if (ride.status === 'in_progress' || ride.status === 'accepted') {
+              if (ride.status === 'inprogress' || ride.status === 'accepted') {
                 navigate(`/ride/${ride.$id}`);
               }
             }}

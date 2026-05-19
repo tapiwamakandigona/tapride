@@ -18,7 +18,7 @@ import { logger } from '@/lib/logger';
 
 /** Status messages shown in the banner for each ride state. */
 const STATUS_MESSAGES: Record<string, string> = {
-  requested: '🔍 Looking for a driver…',
+  pending: '🔍 Looking for a driver…',
   accepted: '🚗 Driver is on the way',
   in_progress: '🛣️ Ride in progress',
   completed: '✅ Ride completed!',
@@ -105,7 +105,7 @@ const ActiveRide: React.FC = () => {
     );
   }
 
-  const canCancel = localRide.status === 'requested' || localRide.status === 'accepted';
+  const canCancel = localRide.status === 'pending' || localRide.status === 'accepted';
   const showComplete = localRide.status === 'completed';
 
   return (
@@ -166,7 +166,7 @@ const ActiveRide: React.FC = () => {
           </button>
         )}
 
-        {isDriver && localRide.status === 'in_progress' && (
+        {isDriver && localRide.status === 'inprogress' && (
           <button
             onClick={handleComplete}
             disabled={loading}
@@ -187,7 +187,7 @@ const ActiveRide: React.FC = () => {
         )}
 
         {/* Chat button */}
-        {(localRide.status === 'accepted' || localRide.status === 'in_progress') && (
+        {(localRide.status === 'accepted' || localRide.status === 'inprogress') && (
           <button
             onClick={() => navigate(`/chat/${rideId}`)}
             className="w-full rounded-xl bg-white border border-gray-200 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"

@@ -1,14 +1,15 @@
 /** All shared TypeScript types for TapRide */
 
 export type UserRole = 'rider' | 'driver';
-export type RideStatus = 'requested' | 'accepted' | 'in_progress' | 'completed' | 'cancelled';
+export type RideStatus = 'pending' | 'accepted' | 'inprogress' | 'completed' | 'cancelled';
 export type PaymentStatus = 'pending' | 'paid' | 'refunded';
 
 /** User profile stored in the `profiles` collection */
 export interface Profile {
   $id: string;
   userId: string;
-  fullName: string;
+  name: string;
+  email?: string;
   phone: string;
   role: UserRole;
   rating: number;

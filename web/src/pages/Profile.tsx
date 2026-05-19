@@ -15,7 +15,7 @@ const Profile: React.FC = () => {
   const { logout } = useAuth();
 
   const [editing, setEditing] = useState(false);
-  const [fullName, setFullName] = useState(profile?.fullName ?? '');
+  const [fullName, setFullName] = useState(profile?.name ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
   const [vehicleType, setVehicleType] = useState(profile?.vehicleType ?? '');
   const [licensePlate, setLicensePlate] = useState(profile?.licensePlate ?? '');
@@ -32,7 +32,7 @@ const Profile: React.FC = () => {
         DATABASE_ID,
         COLLECTIONS.PROFILES,
         profile.$id,
-        { fullName, phone, vehicleType: vehicleType || null, licensePlate: licensePlate || null },
+        { name: fullName, phone, vehicleType: vehicleType || null, licensePlate: licensePlate || null },
       );
       setProfile(doc as unknown as typeof profile);
       setEditing(false);
@@ -75,7 +75,7 @@ const Profile: React.FC = () => {
           <div className="h-20 w-20 rounded-full bg-brand-100 flex items-center justify-center text-4xl">
             {profile.role === 'driver' ? '🚗' : '🧑'}
           </div>
-          <p className="mt-2 text-lg font-bold text-gray-900">{profile.fullName}</p>
+          <p className="mt-2 text-lg font-bold text-gray-900">{profile.name}</p>
           <p className="text-sm text-gray-500 capitalize">{profile.role}</p>
           <div className="mt-1 flex items-center gap-1 text-sm text-yellow-600">
             <span>⭐</span>
@@ -106,7 +106,7 @@ const Profile: React.FC = () => {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
               />
             ) : (
-              <p className="text-sm text-gray-800">{profile.fullName}</p>
+              <p className="text-sm text-gray-800">{profile.name}</p>
             )}
           </div>
 

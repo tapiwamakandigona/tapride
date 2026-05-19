@@ -23,7 +23,7 @@ export const DriverCard: React.FC<Props> = ({ driver, profile, userLat, userLng 
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-medium text-gray-800 truncate">
-          {profile?.fullName ?? 'Driver'}
+          {profile?.name ?? 'Driver'}
         </p>
         {profile?.vehicleType && (
           <p className="text-xs text-gray-500">{profile.vehicleType} · {profile.licensePlate}</p>
