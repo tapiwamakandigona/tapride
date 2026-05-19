@@ -124,6 +124,21 @@ const ActiveRide: React.FC = () => {
     return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
   }, [localRide?.status]);
 
+  // ── Polling fallback (every 5 s while ride is active) ────────────────────
+  useEffect(() => {
+    if (!rideId) return;
+    if (localRide?.status === 'completed' || localRide?.status === 'cancelled') return;
+    const interval = setInterval(async () => {
+      try {
+        const doc = await databases.getDocument(DATABASE_ID, COLLECTIONS.RIDES, rideId);
+        const ride = doc as unknown as Ride;
+        setLocalRide(ride);
+        setActiveRide(ride);
+      } catch {}
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [rideId, localRide?.status, setActiveRide]);
+
   // ── Realtime subscription ─────────────────────────────────────────────────
   useRealtime<Ride>(
     rideId

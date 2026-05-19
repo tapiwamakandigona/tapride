@@ -62,6 +62,22 @@ const DriverDashboard: React.FC = () => {
     load();
   }, [isOnline]);
 
+  // Polling fallback every 5 s when online
+  useEffect(() => {
+    if (!isOnline) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.RIDES, [
+          Query.equal('status', 'pending'),
+          Query.orderDesc('$createdAt'),
+          Query.limit(10),
+        ]);
+        setRequestedRides(res.documents as unknown as Ride[]);
+      } catch {}
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isOnline]);
+
   // Subscribe to new ride requests via Realtime when online
   useRealtime<Ride>(
     isOnline

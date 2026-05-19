@@ -66,7 +66,7 @@ export function useRide() {
         DATABASE_ID,
         COLLECTIONS.RIDES,
         rideId,
-        { status: 'accepted', driverId: user.$id, acceptedAt: new Date().toISOString() },
+        { status: 'accepted', driverId: user.$id },
       );
       setActiveRide(doc as unknown as Ride);
       return true;
@@ -111,7 +111,7 @@ export function useRide() {
         DATABASE_ID,
         COLLECTIONS.RIDES,
         rideId,
-        { status: 'completed', completedAt: new Date().toISOString() },
+        { status: 'completed' },
       );
       setActiveRide(doc as unknown as Ride);
       return true;

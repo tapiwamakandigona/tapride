@@ -28,7 +28,7 @@ export function useChat(rideId: string) {
       try {
         const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.MESSAGES, [
           Query.equal('rideId', rideId),
-          Query.orderAsc('createdAt'),
+          Query.orderAsc('$createdAt'),
           Query.limit(100),
         ]);
         if (!cancelled) setMessages(res.documents as unknown as Message[]);
@@ -40,6 +40,22 @@ export function useChat(rideId: string) {
     };
     load();
     return () => { cancelled = true; };
+  }, [rideId]);
+
+  // Polling fallback every 3 s for new messages
+  useEffect(() => {
+    if (!rideId) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.MESSAGES, [
+          Query.equal('rideId', rideId),
+          Query.orderAsc('$createdAt'),
+          Query.limit(100),
+        ]);
+        setMessages(res.documents as unknown as Message[]);
+      } catch {}
+    }, 3000);
+    return () => clearInterval(interval);
   }, [rideId]);
 
   // Subscribe to new messages via Realtime
